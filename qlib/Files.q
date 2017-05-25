@@ -21,18 +21,6 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#! Find Qore files in given workspace path.
-/**
-    @return list of file paths
-*/
-list sub findQoreFilesInWorkspace(string workspacePath) {
-    list qoreFiles = ();
-    qoreFiles += findFilesWithExtension(workspacePath, "q");
-    qoreFiles += findFilesWithExtension(workspacePath, "qm");
-    qoreFiles += findFilesWithExtension(workspacePath, "qtest");
-    return qoreFiles;
-}
-
 #! Find files in given path with given extension.
 list sub findFilesWithExtension(string path, string extension) {
     list files = ();
@@ -44,4 +32,46 @@ list sub findFilesWithExtension(string path, string extension) {
             files += file;
     }
     return files;
+}
+
+#! Find Qore files in given workspace path.
+/**
+    @return list of file paths
+*/
+list sub findQoreFilesInWorkspace(string workspacePath) {
+    list qoreFiles = ();
+    qoreFiles += findFilesWithExtension(workspacePath, "q");
+    qoreFiles += findFilesWithExtension(workspacePath, "qm");
+    qoreFiles += findFilesWithExtension(workspacePath, "qtest");
+    qoreFiles += findFilesWithExtension(workspacePath, "ql");
+    qoreFiles += findFilesWithExtension(workspacePath, "qc");
+    qoreFiles += findFilesWithExtension(workspacePath, "qsd");
+    qoreFiles += findFilesWithExtension(workspacePath, "qfd");
+    qoreFiles += findFilesWithExtension(workspacePath, "qwf");
+    qoreFiles += findFilesWithExtension(workspacePath, "qjob");
+    qoreFiles += findFilesWithExtension(workspacePath, "qclass");
+    qoreFiles += findFilesWithExtension(workspacePath, "qconst");
+    qoreFiles += findFilesWithExtension(workspacePath, "qsm");
+    return qoreFiles;
+}
+
+#! Find standard Qore module files.
+/**
+    @return list of file paths
+*/
+list sub findStdModuleFiles() {
+    # find module path
+    Program p(PO_NO_CHILD_PO_RESTRICTIONS | PO_NEW_STYLE);
+    p.disableParseOptions(PO_NO_TOP_LEVEL_STATEMENTS);
+    p.parse("%requires Util\nint x = 0;", "label", 0);
+    hash mh = p.callFunction("get_module_hash");
+    *string filename = mh.Util.filename;
+    if (!filename)
+        return list();
+    string modulePath = dirname(filename);
+
+    # find modules
+    list moduleFiles = ();
+    moduleFiles += findFilesWithExtension(modulePath, "qm");
+    return moduleFiles;
 }

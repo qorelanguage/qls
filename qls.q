@@ -45,14 +45,6 @@
 %include ./qlib/Files.q
 %include ./qlib/ServerCapabilities.q
 
-sub debugLog(string fmt) {
-    string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
-    string msg = vsprintf(str + fmt + "\n", argv);
-    FileOutputStream fos("qls_log.txt", True);
-    fos.write(binary(msg));
-    #stderr.write(msg);
-}
-
 #! LSP FileChangeType definition
 const FileChangeType = {
 	"Created": 1,
@@ -97,6 +89,18 @@ class QLS {
         #! Client capabilities
         hash clientCapabilities;
 
+        #! Client configuration.
+        hash clientConfig;
+
+        #! Whether to log QLS operations.
+        bool logging = False;
+
+        #! Logging verbosity. Only messages with this level or lower will be logged.
+        int logVerbosity = 0;
+
+        #! Log file.
+        string logFile;
+
         #! Map of JSON-RPC methods
         hash methodMap;
 
@@ -105,6 +109,9 @@ class QLS {
 
         #! Qore Documents in the current workspace.
         hash workspaceDocs;
+
+        #! Standard Qore modules.
+        hash stdModuleDocs;
     }
 
     constructor() {
@@ -113,7 +120,28 @@ class QLS {
         set_return_value(main());
     }
 
+    log(int verbosity, string fmt) {
+        if (logging && verbosity <= logVerbosity) {
+            string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
+            string msg = vsprintf(str + fmt + "\n", argv);
+            FileOutputStream fos(logFile, True);
+            fos.write(binary(msg));
+            fos.close();
+        }
+    }
+
+    log(int verbosity, string fmt, softlist l) {
+        if (logging && verbosity <= logVerbosity) {
+            string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
+            string msg = vsprintf(str + fmt + "\n", l);
+            FileOutputStream fos(logFile, True);
+            fos.write(binary(msg));
+            fos.close();
+        }
+    }
+
     error(string fmt) {
+        log(0, fmt, argv);
         stderr.vprintf("ERROR: " + fmt + "\n", argv);
         exit(1);
     }
@@ -192,7 +220,7 @@ class QLS {
         # handle the request
         if (parsed.typeCode() == NT_HASH) {
             hash request = parsed;
-            debugLog("req: %N", request);
+            log(2, "req: %N", request);
             *string response;
 
             # find and run method handler
@@ -213,6 +241,7 @@ class QLS {
                 else
                     response = ErrorResponse::notInitialized(request);
             }
+            log(2, "response: %N", response);
             return response;
         }
         else {
@@ -227,15 +256,13 @@ class QLS {
     #=================
 
     private:internal parseFilesInWorkspace() {
-        stderr.printf("parsing files in workspace\n");
-
         # find all Qore files in the workspace
         list qoreFiles = findQoreFilesInWorkspace(rootPath);
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
         qoreFiles = map rootUri + $1.substr(rootPathSize), qoreFiles;
-        stderr.printf("qore files: %N\n", qoreFiles);
+        log(1, "qore files in workspace: %N\n", qoreFiles);
 
         # measure start time
         date start = now_us();
@@ -245,7 +272,18 @@ class QLS {
 
         # measure end time
         date end = now_us();
-        stderr.printf("parsing of %d files took: %y\n", qoreFiles.size(), end-start);
+        log(0, "parsing of %d workspace files took: %y\n", qoreFiles.size(), end-start);
+    }
+
+    private:internal parseStdModules() {
+        # find standard Qore modules
+        list moduleFiles = findStdModuleFiles();
+
+        # create a list of file URIs
+        moduleFiles = map "file://" + $1, moduleFiles;
+
+        # parse everything
+        map stdModuleDocs{$1} = new Document($1), moduleFiles;
     }
 
 
@@ -255,9 +293,11 @@ class QLS {
 
     #! "initialize" method handler
     private:internal *string meth_initialize(hash request) {
+        log(0, "initialize request received: %N", request);
         jsonRpcVer = request.jsonrpc;
         reference initParams = \request.params;
 
+        # parse/save initialization params
         parentProcessId = initParams.processId;
         clientCapabilities = initParams.capabilities;
         if (initParams{"rootUri"})
@@ -269,11 +309,18 @@ class QLS {
         if (!rootUri && rootPath)
             rootUri = "file://" + rootPath;
 
+        # parse all Qore file in the current workspace
         parseFilesInWorkspace();
 
+        # parse standard Qore modules
+        parseStdModules();
+
+        # create response
         hash result = {
             "capabilities": ServerCapabilities
         };
+
+        log(0, "initialization complete!");
 
         initialized = True;
         return make_jsonrpc_response(jsonRpcVer, request.id, result);
@@ -282,19 +329,23 @@ class QLS {
     #! "initialized" notification method handler
     private:internal *string meth_initialized(hash request) {
         clientInitialized = True;
+        log(0, "client initialized!");
         return NOTHING;
     }
 
     #! "shutdown" method handler
     private:internal *string meth_shutdown(hash request) {
         shutdown = True;
+        log(0, "shutdown request received");
         return make_jsonrpc_response(jsonRpcVer, request.id, {});
     }
 
     #! "exit" notification method handler
     private:internal *string meth_exit(hash request) {
+        log(0, "exit request received");
         if (!shutdown)
             exitCode = 1;
+        log(0, "exitCode: %d", exitCode);
         running = False;
         return NOTHING;
     }
@@ -312,7 +363,32 @@ class QLS {
 
     #! "workspace/didChangeConfiguration" notification method handler
     private:internal *string meth_ws_didChangeConfiguration(hash request) {
-        # ignore for now
+        clientConfig = request.params.settings;
+        log(0, "changed configuration received: %N", clientConfig);
+        logging = clientConfig{"qore.logging"} ?? False;
+        logVerbosity = clientConfig{"qore.logVerbosity"} ?? 0;
+        logVerbosity = (logVerbosity < 0) ? 0 : ((logVerbosity > 3) ? 3 : logVerbosity);
+        if (clientConfig{"qore.logFile"}) {
+            logFile = clientConfig{"qore.logFile"};
+        }
+        else {
+            if (PlatformOS == "Windows") {
+                Dir d();
+                string logDir = getenv("APPDATA") + DirSep + "QLS";
+                if (!d.chdir(logDir))
+                    d.create(0755);
+                logFile = logDir + DirSep + "qls.log";
+            }
+            else {
+                logFile = getenv("HOME") + DirSep + ".qls.log";
+            }
+        }
+
+        # truncate the log file if appending is turned off
+        if (logging && !clientConfig{"qore.appendToLog"}) {
+            FileOutputStream fos(logFile, False);
+            fos.close();
+        }
         return NOTHING;
     }
 
@@ -333,18 +409,18 @@ class QLS {
         return NOTHING;
     }
 
-    #! "workspace/symbol"  method handler
+    #! "workspace/symbol" method handler
     private:internal *string meth_ws_symbol(hash request) {
-        #stderr.printf("workspace/symbol request received\n");
         list symbols = ();
         string query = request.params.query;
+        log(1, "workspace symbols requested; query: '%s'", query);
         map symbols += $1.findMatchingSymbols(query), documents.iterator();
         map symbols += $1.findMatchingSymbols(query), workspaceDocs.iterator();
-        #stderr.printf("found %d matching symbols\n", symbols.size());
+        log(1, "found %d workspace symbols for query: '%s'", symbols.size(), query);
         return make_jsonrpc_response(jsonRpcVer, request.id, symbols);
     }
 
-    #! "workspace/executeCommand"  method handler
+    #! "workspace/executeCommand" method handler
     private:internal *string meth_ws_executeCommand(hash request) {
         return ErrorResponse::methodNotFound(request);
     }
@@ -363,6 +439,7 @@ class QLS {
         else
             doc = new Document(textDoc.uri, textDoc.text, textDoc.languageId, textDoc.version);
         documents{textDoc.uri} = doc;
+        log(1, "opened text document: %s", textDoc.uri);
 
         if (doc.getParseErrorCount() > 0) {
             *list diagnostics = doc.getDiagnostics();
@@ -379,6 +456,7 @@ class QLS {
             doc.didChange(change);
         }
         doc.changeVersion(textDoc.version);
+        log(1, "text document changed: %s", textDoc.uri);
 
         if (doc.getParseErrorCount() > 0) {
             *list diagnostics = doc.getDiagnostics();
@@ -408,17 +486,18 @@ class QLS {
     private:internal *string meth_td_didClose(hash request) {
         string uri = request.params.textDocument.uri;
         workspaceDocs{uri} = remove documents{uri};
+        log(1, "closed text document: %s", uri);
         return NOTHING;
     }
 
     #! "textDocument/completion" method handler
     private:internal *string meth_td_completion(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "completionItem/resolve" method handler
     private:internal *string meth_completionItem_resolve(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/hover" method handler
@@ -456,7 +535,7 @@ class QLS {
 
     #! "textDocument/signatureHelp" method handler
     private:internal *string meth_td_signatureHelp(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/references" method handler
@@ -468,7 +547,7 @@ class QLS {
 
     #! "textDocument/documentHighlight" method handler
     private:internal *string meth_td_documentHighlight(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/documentSymbol" method handler
@@ -480,17 +559,17 @@ class QLS {
 
     #! "textDocument/formatting" method handler
     private:internal *string meth_td_formatting(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/rangeFormatting" method handler
     private:internal *string meth_td_rangeFormatting(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/onTypeFormatting" method handler
     private:internal *string meth_td_onTypeFormatting(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/definition" method handler
@@ -516,31 +595,31 @@ class QLS {
 
     #! "textDocument/codeAction" method handler
     private:internal *string meth_td_codeAction(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/codeLens" method handler
     private:internal *string meth_td_codeLens(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "codeLens/resolve" method handler
     private:internal *string meth_codeLens_resolve(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/documentLink" method handler
     private:internal *string meth_td_documentLink(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "documentLink/resolve" method handler
     private:internal *string meth_documentLink_resolve(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 
     #! "textDocument/rename" method handler
     private:internal *string meth_td_rename(hash request) {
-        return ErrorResponse::invalidRequest(request);
+        return ErrorResponse::methodNotFound(request);
     }
 }
