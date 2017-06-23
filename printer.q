@@ -38,8 +38,9 @@ string fileToParse = ARGV[0];
 string outFile = (ARGV.size() == 2) ? ARGV[1] : "./tree.out.txt";
 
 astparser::AstParser parser();
-astparser::AstTree *tree = parser.parseFile(fileToParse);
+*astparser::AstTree tree = parser.parseFile(fileToParse);
 if (tree)
     tree.printTree(outFile);
+    #printf("tree: %N\n", tree.getNodesInfo());
 else
     stderr.printf("error occured during parsing!\n");
