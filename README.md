@@ -19,6 +19,15 @@ QLS supports the following LSP features:
 - Workspace symbol search
 - Syntax error reporting
 
+## Logging
+
+If you want to log output of QLS, you can use the following configuration settings:
+
+- `qore.logging` Boolean flag to set logging on or off.
+- `qore.logFile` String specifying QLS log file path. If logging is turned on, all the operations will be logged to this file. If not defined, `~/.qls.log` is used on Unix-like systems and `%AppData%\QLS\qls.log` on Windows.
+- `qore.logVerbosity` Verbosity of QLS logging. From 0 to 2.
+- `qore.appendToLog` Boolean flag specifying whether to append to QLS log file or to overwrite it on each restart.
+
 ## Supported LSP methods
 
 QLS implements the following LSP methods:
