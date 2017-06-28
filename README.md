@@ -6,7 +6,7 @@ QLS adheres to the [Language Server Protocol](https://github.com/Microsoft/langu
 
 ## Requirements
 
-QLS requires [Qore](https://github.com/qorelanguage/qore) 0.8.13+ and the `astparser` module to be installed for all the functionality to work.
+QLS requires [Qore](https://github.com/qorelanguage/qore) 0.8.13+ and the `astparser` and `json` modules to be installed for all the functionality to work.
 
 ## Features
 
