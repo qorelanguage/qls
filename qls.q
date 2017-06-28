@@ -93,7 +93,10 @@ class QLS {
         hash clientConfig;
 
         #! Whether to log QLS operations.
-        bool logging = False;
+        bool logging = PlatformOS != "Windows";
+
+        #! Whether to append to the log file.
+        bool appendToLog = True;
 
         #! Whether the log file can be opened.
         bool canOpenLog = False;
@@ -118,12 +121,45 @@ class QLS {
     }
 
     constructor() {
+        logFile = getDefaultLogFilePath();
         initMethodMap();
-
         set_return_value(main());
     }
 
-    log(int verbosity, string fmt) {
+    private:internal string getDefaultLogFilePath() {
+        if (PlatformOS == "Windows")
+            return getenv("APPDATA") + DirSep + "QLS" + DirSep + "qls.log";
+        else
+            return getenv("HOME") + DirSep + ".qls.log";
+    }
+
+    private:internal prepareLogFile(string logFilePath, bool force = False) {
+        if (logging || force) {
+            # prepare the log directory
+            Dir d();
+            if (!d.chdir(dirname(logFilePath))) {
+                try {
+                    d.create(0755);
+                }
+                catch (e) {
+                    canOpenLog = False;
+                    return;
+                }
+            }
+
+            # check if the log file can be opened and truncate it if appending is turned off
+            try {
+                FileOutputStream fos(logFile, appendToLog);
+                fos.close();
+                canOpenLog = True;
+            }
+            catch (e) {
+                canOpenLog = False;
+            }
+        }
+    }
+
+    private:internal log(int verbosity, string fmt) {
         if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", argv);
@@ -133,7 +169,7 @@ class QLS {
         }
     }
 
-    log(int verbosity, string fmt, softlist l) {
+    private:internal log(int verbosity, string fmt, softlist l) {
         if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", l);
@@ -143,7 +179,7 @@ class QLS {
         }
     }
 
-    error(string fmt) {
+    private:internal error(string fmt) {
         log(0, fmt, argv);
         stderr.vprintf("ERROR: " + fmt + "\n", argv);
         exit(1);
@@ -369,47 +405,14 @@ class QLS {
         clientConfig = request.params.settings;
         log(0, "changed configuration received: %N", clientConfig);
         logging = clientConfig.qore.logging ?? False;
+        appendToLog = clientConfig.qore.appendToLog ?? True;
         logVerbosity = clientConfig.qore.logVerbosity ?? 0;
         logVerbosity = (logVerbosity < 0) ? 0 : ((logVerbosity > 3) ? 3 : logVerbosity);
-        if (clientConfig.qore.logFile) {
+        if (clientConfig.qore.logFile)
             logFile = clientConfig.qore.logFile;
-        }
-        else {
-            if (PlatformOS == "Windows") {
-                Dir d();
-                string logDir = getenv("APPDATA") + DirSep + "QLS";
-                if (!d.chdir(logDir))
-                    d.create(0755);
-                logFile = logDir + DirSep + "qls.log";
-            }
-            else {
-                logFile = getenv("HOME") + DirSep + ".qls.log";
-            }
-        }
-
-        # check if the log file can be opened and truncate it if appending is turned off
-        if (logging) {
-            if (clientConfig.qore.appendToLog) {
-                try {
-                    FileOutputStream fos(logFile, True);
-                    fos.close();
-                    canOpenLog = True;
-                }
-                catch (e) {
-                    canOpenLog = False;
-                }
-            }
-            else {
-                try { # truncate the log file if appending is turned off
-                    FileOutputStream fos(logFile, False);
-                    fos.close();
-                    canOpenLog = True;
-                }
-                catch (e) {
-                    canOpenLog = False;
-                }
-            }
-        }
+        else
+            logFile = getDefaultLogFilePath();
+        prepareLogFile(logFile);
 
         if (logging && !canOpenLog)
             return Notification::showMessage(jsonRpcVer, MessageType.Warning,
