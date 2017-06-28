@@ -122,6 +122,7 @@ class QLS {
 
     constructor() {
         logFile = getDefaultLogFilePath();
+        prepareLogFile(logFile);
         initMethodMap();
         set_return_value(main());
     }
