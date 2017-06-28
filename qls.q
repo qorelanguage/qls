@@ -368,11 +368,11 @@ class QLS {
     private:internal *string meth_ws_didChangeConfiguration(hash request) {
         clientConfig = request.params.settings;
         log(0, "changed configuration received: %N", clientConfig);
-        logging = clientConfig{"qore.logging"} ?? False;
-        logVerbosity = clientConfig{"qore.logVerbosity"} ?? 0;
+        logging = clientConfig.qore.logging ?? False;
+        logVerbosity = clientConfig.qore.logVerbosity ?? 0;
         logVerbosity = (logVerbosity < 0) ? 0 : ((logVerbosity > 3) ? 3 : logVerbosity);
-        if (clientConfig{"qore.logFile"}) {
-            logFile = clientConfig{"qore.logFile"};
+        if (clientConfig.qore.logFile) {
+            logFile = clientConfig.qore.logFile;
         }
         else {
             if (PlatformOS == "Windows") {
@@ -389,7 +389,7 @@ class QLS {
 
         # check if the log file can be opened and truncate it if appending is turned off
         if (logging) {
-            if (clientConfig{"qore.appendToLog"}) {
+            if (clientConfig.qore.appendToLog) {
                 try {
                     FileOutputStream fos(logFile, True);
                     fos.close();
