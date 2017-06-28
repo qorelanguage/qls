@@ -95,6 +95,9 @@ class QLS {
         #! Whether to log QLS operations.
         bool logging = False;
 
+        #! Whether the log file can be opened.
+        bool canOpenLog = False;
+
         #! Logging verbosity. Only messages with this level or lower will be logged.
         int logVerbosity = 0;
 
@@ -121,7 +124,7 @@ class QLS {
     }
 
     log(int verbosity, string fmt) {
-        if (logging && verbosity <= logVerbosity) {
+        if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", argv);
             FileOutputStream fos(logFile, True);
@@ -131,7 +134,7 @@ class QLS {
     }
 
     log(int verbosity, string fmt, softlist l) {
-        if (logging && verbosity <= logVerbosity) {
+        if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", l);
             FileOutputStream fos(logFile, True);
@@ -384,11 +387,33 @@ class QLS {
             }
         }
 
-        # truncate the log file if appending is turned off
-        if (logging && !clientConfig{"qore.appendToLog"}) {
-            FileOutputStream fos(logFile, False);
-            fos.close();
+        # check if the log file can be opened and truncate it if appending is turned off
+        if (logging) {
+            if (clientConfig{"qore.appendToLog"}) {
+                try {
+                    FileOutputStream fos(logFile, True);
+                    fos.close();
+                    canOpenLog = True;
+                }
+                catch (e) {
+                    canOpenLog = False;
+                }
+            }
+            else {
+                try { # truncate the log file if appending is turned off
+                    FileOutputStream fos(logFile, False);
+                    fos.close();
+                    canOpenLog = True;
+                }
+                catch (e) {
+                    canOpenLog = False;
+                }
+            }
         }
+
+        if (logging && !canOpenLog)
+            return Notification.showMessage(jsonRpcVer, MessageType.Warning,
+                "QLS log file could not be opened. Logging will be turned off.");
         return NOTHING;
     }
 

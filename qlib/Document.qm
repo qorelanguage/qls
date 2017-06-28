@@ -121,9 +121,6 @@ public class Document {
             handleParseErrors(1);
             stderr.printf(parseError);
         }
-        /*handleParseErrors(rc);
-        if (rc)
-            stderr.printf(parseError);*/
     }
 
     #! Parse the text of the document.
@@ -134,9 +131,6 @@ public class Document {
             handleParseErrors(1);
             stderr.printf(parseError);
         }
-        /*handleParseErrors(rc);
-        if (rc)
-            stderr.printf(parseError);*/
     }
 
     string getUri() { return uri; }
