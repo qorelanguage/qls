@@ -412,7 +412,7 @@ class QLS {
         }
 
         if (logging && !canOpenLog)
-            return Notification.showMessage(jsonRpcVer, MessageType.Warning,
+            return Notification::showMessage(jsonRpcVer, MessageType.Warning,
                 "QLS log file could not be opened. Logging will be turned off.");
         return NOTHING;
     }
