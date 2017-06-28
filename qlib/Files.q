@@ -21,45 +21,83 @@
     DEALINGS IN THE SOFTWARE.
 */
 
-#! Find files in given path with given extension.
-list sub findFilesWithExtension(string path, string extension) {
-    list files = ();
-    string out = backquote(sprintf("find %s -name \"*.%s\"", path, extension));
-    DataLineIterator it(out);
-    while (it.next()) {
-        string file = it.getValue();
-        if (file)
-            files += file;
+namespace Files
+{
+
+const QORE_EXTENSIONS = (
+        # qore
+        "q"         : "Qore script",
+        "ql"        : "Qore library",
+        "qc"        : "Qore class",
+        "qm"        : "Qore user module",
+        "qtest"     : "Qore unit test",
+        # qorus
+        "qwf"       : "Qorus workflow definition",
+        "qsd"       : "Qorus service",
+        "qfd"       : "Qorus functions",
+        "qjob"      : "Qorus job",
+        "qconst"    : "Qorus constant",
+        #"qmapper"   : "Qorus mapper",
+        "qscript"   : "Qorus deployment script",
+        "qsm"       : "Qorus schema module",
+        #"qvmap"    : "Qorus value map"
+    );
+
+bool sub is_valid_qore_file(string path) {
+    *string ext = (path =~ x/\.([a-z0-9]+)$/i)[0];
+    if (ext && QORE_EXTENSIONS.hasKey(ext)) {
+        return True;
     }
-    return files;
+
+    # here we are trying to simulate magic as specified in Freedesktop's
+    # Shared MIME-info Database specification.
+    # For Qore we just assume that "#!/usr/bin/env qore" is used
+    FileLineIterator it(path);
+    while (it.next()) {
+        if (it.getValue().regex("^#!/usr/bin/env qore")) {
+            return True;
+        }
+        else {
+            break;
+        }
+    }
+
+    return False;
 }
 
-#! Find Qore files in given workspace path.
+#! Find files in given root path
 /**
     @return list of file paths
 */
-list sub findQoreFilesInWorkspace(string workspacePath) {
-    list qoreFiles = ();
-    qoreFiles += findFilesWithExtension(workspacePath, "q");
-    qoreFiles += findFilesWithExtension(workspacePath, "qm");
-    qoreFiles += findFilesWithExtension(workspacePath, "qtest");
-    qoreFiles += findFilesWithExtension(workspacePath, "ql");
-    qoreFiles += findFilesWithExtension(workspacePath, "qc");
-    qoreFiles += findFilesWithExtension(workspacePath, "qsd");
-    qoreFiles += findFilesWithExtension(workspacePath, "qfd");
-    qoreFiles += findFilesWithExtension(workspacePath, "qwf");
-    qoreFiles += findFilesWithExtension(workspacePath, "qjob");
-    qoreFiles += findFilesWithExtension(workspacePath, "qclass");
-    qoreFiles += findFilesWithExtension(workspacePath, "qconst");
-    qoreFiles += findFilesWithExtension(workspacePath, "qsm");
-    return qoreFiles;
+list sub find_qore_files(string path) {
+    Dir d();
+    if (!d.chdir(path)) {
+        throw "WORKSPACE-PATH-ERROR", sprintf("Cannot open directory: %s", path);
+    }
+
+    list ret = list();
+
+    ListIterator it = d.listFiles().iterator();
+    while (it.next()) {
+        string fpath = sprintf("%s%s%s", path, DirSep, it.getValue());
+        if (is_valid_qore_file(fpath)) {
+            push ret, fpath;
+        }
+    }
+
+    it = d.listDirs().iterator();
+    while (it.next()) {
+        ret += find_qore_files(path + DirSep + it.getValue());
+    }
+
+    return ret;
 }
 
 #! Find standard Qore module files.
 /**
     @return list of file paths
 */
-list sub findStdModuleFiles() {
+list sub find_std_modules() {
     # find module path
     Program p(PO_NO_CHILD_PO_RESTRICTIONS | PO_NEW_STYLE);
     p.disableParseOptions(PO_NO_TOP_LEVEL_STATEMENTS);
@@ -72,6 +110,8 @@ list sub findStdModuleFiles() {
 
     # find modules
     list moduleFiles = ();
-    moduleFiles += findFilesWithExtension(modulePath, "qm");
+    moduleFiles += find_qore_files(modulePath);
     return moduleFiles;
 }
+
+} # namespace Files

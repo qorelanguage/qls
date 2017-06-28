@@ -257,7 +257,7 @@ class QLS {
 
     private:internal parseFilesInWorkspace() {
         # find all Qore files in the workspace
-        list qoreFiles = findQoreFilesInWorkspace(rootPath);
+        list qoreFiles = Files::find_qore_files(rootPath);
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
@@ -277,7 +277,7 @@ class QLS {
 
     private:internal parseStdModules() {
         # find standard Qore modules
-        list moduleFiles = findStdModuleFiles();
+        list moduleFiles = Files::find_std_modules();
 
         # create a list of file URIs
         moduleFiles = map "file://" + $1, moduleFiles;
