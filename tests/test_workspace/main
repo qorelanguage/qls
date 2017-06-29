@@ -1,0 +1,19 @@
+#!/usr/bin/env qore
+
+%new-style
+%exec-class Main
+
+%requires ./MyModule.qm
+
+%include mylibs.ql
+%include myclass.qc
+
+
+class Main
+{
+    constructor() {
+        MyClass c();
+    }
+
+} # class Main
+

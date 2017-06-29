@@ -161,29 +161,25 @@ class QLS {
     }
 
     private:internal log(int verbosity, string fmt) {
-        if (logging && canOpenLog && verbosity <= logVerbosity) {
+#        if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", argv);
+stderr.printf(msg);
             FileOutputStream fos(logFile, True);
             fos.write(binary(msg));
             fos.close();
-        }
+#        }
     }
 
     private:internal log(int verbosity, string fmt, softlist l) {
-        if (logging && canOpenLog && verbosity <= logVerbosity) {
+#        if (logging && canOpenLog && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", l);
+stderr.printf(msg);
             FileOutputStream fos(logFile, True);
             fos.write(binary(msg));
             fos.close();
-        }
-    }
-
-    private:internal error(string fmt) {
-        log(0, fmt, argv);
-        stderr.vprintf("ERROR: " + fmt + "\n", argv);
-        exit(1);
+#        }
     }
 
     private:internal initMethodMap() {
@@ -237,14 +233,18 @@ class QLS {
         while (running) {
             # read JSON-RPC request
             hash received = Messenger::receive();
-            if (received.error)
-                error(received.error);
-            if (!received.msg)
-                break;
-
-            # handle the request
-            *string response = handleRequest(received.msg);
-
+            *string response;
+log(0, sprintf("received: %n", received));
+            if (!received.msg) {
+                response = ErrorResponse::internalError("no message received");
+            }
+            else if (received.error) {
+                response = ErrorResponse::internalError(received.error);
+            }
+            else {
+                response = handleRequest(received.msg);
+            }
+log(0, sprintf("response: %n", response));
             # send back response if any
             if (response)
                 Messenger::send(response);
@@ -255,39 +255,29 @@ class QLS {
 
     *string handleRequest(string msg) {
         # parse the request
-        any parsed = parse_json(msg);
+        any request = parse_json(msg);
+        log(2, "reqest: %N", request);
 
         # handle the request
-        if (parsed.typeCode() == NT_HASH) {
-            hash request = parsed;
-            log(2, "req: %N", request);
-            *string response;
+        if (request.typeCode() != NT_HASH) {
+            return ErrorResponse::invalidRequest(("received" : msg), "Invalid JSON-RPC request");
+        }
 
-            # find and run method handler
-            if (initialized) {
-                *code method = methodMap{request.method};
-                if (method) {
-                    response = method(request);
-                }
-                else {
-                    if (request.id) # if it's a request, send response
-                        response = ErrorResponse::methodNotFound(request);
-                    # else it's notification -> ignore
-                }
-            }
-            else { # run "initialize" method handler or return an error
-                if (request.method == "initialize")
-                    response = meth_initialize(request);
-                else
-                    response = ErrorResponse::notInitialized(request);
-            }
-            log(2, "response: %N", response);
-            return response;
+        if (!request.hasKey("jsonrpc")) {
+            return ErrorResponse::invalidRequest(request, "Missing jsonrpc attribute");
         }
-        else {
-            error("invalid JSON-RPC request");
+        if (!request.hasKey("method")) {
+            return ErrorResponse::invalidRequest(request, "Missing method attribute");
         }
-        return NOTHING;
+        if (!methodMap.hasKey(request.method)) {
+            return ErrorResponse::methodNotFound(request);
+        }
+        if (!initialized && request.method != "initialize") {
+            return ErrorResponse::notInitialized(request);
+        }
+
+        *string response = methodMap{request.method}(request);
+        return response;
     }
 
 
@@ -335,22 +325,36 @@ class QLS {
     private:internal *string meth_initialize(hash request) {
         log(0, "initialize request received: %N", request);
         jsonRpcVer = request.jsonrpc;
-        reference initParams = \request.params;
+
+        if (!request.params.hasKey("processId")) {
+            return ErrorResponse::invalidRequest(request, "mandatory attribute 'processId' is not present");
+        }
+        if (!request.params.hasKey("rootPath") && !request.params.hasKey("rootUri")) {
+            return ErrorResponse::invalidRequest(request, "mandatory attribute 'rootPath' or 'rootUri' is not present");
+        }
+        if (!request.params.hasKey("capabilities")) {
+            return ErrorResponse::invalidRequest(request, "mandatory attribute 'capabilities' is not present");
+        }
 
         # parse/save initialization params
-        parentProcessId = initParams.processId;
-        clientCapabilities = initParams.capabilities;
-        if (initParams{"rootUri"})
-            rootUri = initParams.rootUri;
-        if (initParams{"rootPath"})
-            rootPath = initParams.rootPath;
+        parentProcessId = request.params.processId;
+        clientCapabilities = request.params.capabilities;
+        if (request.params{"rootUri"})
+            rootUri = request.params.rootUri;
+        if (request.params{"rootPath"})
+            rootPath = request.params.rootPath;
         if (!rootPath && rootUri)
             rootPath = parse_url(rootUri).path;
         if (!rootUri && rootPath)
             rootUri = "file://" + rootPath;
 
         # parse all Qore file in the current workspace
-        parseFilesInWorkspace();
+        try {
+            parseFilesInWorkspace();
+        }
+        catch (hash ex) {
+            return ErrorResponse::invalidParams(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
+        }
 
         # parse standard Qore modules
         parseStdModules();
@@ -603,6 +607,30 @@ class QLS {
 
     #! "textDocument/definition" method handler
     private:internal *string meth_td_definition(hash request) {
+        # validate request
+        if (!request.hasKey("params")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'params' is missing");
+        }
+        if (!request.params.hasKey("textDocument")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument' is missing");
+        }
+        if (!request.params.textDocument.hasKey("uri")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/uri' is missing");
+        }
+        if (!request.params.textDocument.hasKey("position")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position' is missing");
+        }
+        if (!request.params.textDocument.position.hasKey("line")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position/line' is missing");
+        }
+        if (!request.params.textDocument.position.hasKey("character")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position/character' is missing");
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
+            return ErrorResponse::invalidParams(request, sprintf("uri: %n does not exist in parsed documents", request.params.textDocument.uri));
+        }
+
         Document doc = documents{request.params.textDocument.uri};
 
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);

@@ -1,0 +1,18 @@
+# -*- mode: qore; indent-tabs-mode: nil -*-
+
+%require-types
+%enable-all-warnings
+%new-style
+%strict-args
+
+module MyModule{
+    version = "0.1";
+    desc    = "a dummy module";
+    author  = "qoretechnologies.com";
+    url     = "https://github.com/qorelanguage/qls";
+}
+
+namespace MyModule
+{
+    const FOO = "foo";
+}

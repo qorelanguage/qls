@@ -73,4 +73,20 @@ public class ErrorResponse {
         };
         return make_jsonrpc_error(request.jsonrpc, request.id, err);
     }
+
+    public static string internalError(*string message) {
+        hash err = (
+                "code" : ErrorCodes.InternalError,
+                "message" : message ?? "internal error",
+            );
+        return make_jsonrpc_error("2.0", NOTHING, err);
+    }
+
+    public static string invalidParams(hash request, *string message) {
+        hash err = (
+                "code" : ErrorCodes.InvalidParams,
+                "message" : message ?? "invalid params",
+            );
+        return make_jsonrpc_error(request.jsonrpc, request.id, err);
+    }
 }

@@ -8,6 +8,8 @@ QLS adheres to the [Language Server Protocol](https://github.com/Microsoft/langu
 
 QLS requires [Qore](https://github.com/qorelanguage/qore) 0.8.13+ and the `astparser` and `json` modules to be installed for all the functionality to work.
 
+`test/qls.qtest` requires `process` module for its run
+
 ## Features
 
 QLS supports the following LSP features:

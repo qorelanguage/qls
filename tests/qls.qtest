@@ -1,0 +1,555 @@
+#!/usr/bin/env qore
+
+%new-style
+%requires process
+%requires json
+%requires QUnit
+
+%exec-class Main
+
+
+class QlsProcess inherits Process
+{
+    private {
+        QUnit::Test m_test;
+        int m_verbose = 0;
+        Queue m_queue();
+        int m_id = 0;
+    }
+
+    constructor(QUnit::Test parent, int verbose = 0)
+        : Process("qls.q", ("path" : ("..",)))
+    {
+        m_test = parent;
+        m_verbose = verbose;
+
+        m_test.assertEq(True, valid(), "qls.q is valid process");
+        m_test.assertEq(True, running(), "qls.q is running process");
+
+        background stderrBackground();
+        background stdoutBackground();
+    }
+
+    stderrBackground() {
+        while (running()) {
+            while (*string e = readStderr()) {
+                if (m_verbose > 1) {
+                    printf("%n: stderr: %N\n", now_ms(), e);
+                }
+            }
+            sleep(1s);
+        }
+    }
+
+    stdoutBackground() {
+        int contentLength = -1;
+        while (running()) {
+            string txt = readStdout();
+            txt = trim(txt);
+
+            # read headers
+            if (txt.equalPartial("Content-Length")) { # format: "Content-Length: %d"
+                contentLength = txt.substr(16).toInt();
+            }
+            # read JSON-RPC message
+            else if (txt == "") {
+                if (contentLength == -1)
+                    return {"error": "Content-Length header is missing"};
+                txt = readStdout(contentLength);
+                txt = trim(txt);
+                m_queue.push(txt);
+                contentLength = -1;
+            }
+        }
+
+    }
+
+    int nextId() {
+        return m_id++;
+    }
+
+    sendRequest(softstring id, string method, *hash arg) {
+        string s = make_jsonrpc_request(method, "2.0", id, arg);
+        sendRequestRaw(s);
+    }
+
+    sendRequestRaw(string msg) {
+        write(sprintf("Content-Length: %d\r\n", msg.size()));
+        write("\r\n");
+printf("MSG: %s\n", msg);
+        write(msg);
+    }
+
+    list getStdout() {
+        list ret = list();
+        while (m_queue.size()) {
+            *string e = m_queue.get(1);
+            push ret, e;
+        }
+        return ret;
+    }
+}
+
+class Main inherits QUnit::Test
+{
+    constructor() : QUnit::Test("qls.q test", "1.0")
+    {
+/*
+        addTestCase("top level validation of request", \testTopLevelValidation());
+        addTestCase("non existing method test", \testNonExistingMethod());
+        addTestCase("initialize negative test", \testNegativeInitialize());
+        addTestCase("testInitializeMissingAttributes test", \testInitializeMissingAttributes());
+        addTestCase("initialize with wrong path", \testInitializeWrongPath());
+        addTestCase("initialize test", \testInitialize());
+
+        # Workspace methods
+        addTestCase("workspace/didChangeConfiguration", \meth_ws_didChangeConfiguration());
+        addTestCase("workspace/didChangeWatchedFiles", \meth_ws_didChangeWatchedFiles());
+        addTestCase("workspace/symbol", \meth_ws_symbol());
+        addTestCase("workspace/executeCommand", \meth_ws_executeCommand());
+
+        # Document methods
+        addTestCase("textDocument/didOpen", \meth_td_didOpen());
+        addTestCase("textDocument/didChange", \meth_td_didChange());
+        addTestCase("textDocument/willSave", \meth_td_willSave());
+        addTestCase("textDocument/willSaveWaitUntil", \meth_td_willSaveWaitUntil());
+        addTestCase("textDocument/didSave", \meth_td_didSave());
+        addTestCase("textDocument/didClose", \meth_td_didClose());
+        addTestCase("textDocument/completion", \meth_td_completion());
+        addTestCase("completionItem/resolve", \meth_completionItem_resolve());
+        addTestCase("textDocument/hover", \meth_td_hover());
+        addTestCase("textDocument/signatureHelp", \meth_td_signatureHelp());
+        addTestCase("textDocument/references", \meth_td_references());
+        addTestCase("textDocument/documentHighlight", \meth_td_documentHighlight());
+        addTestCase("textDocument/documentSymbol", \meth_td_documentSymbol());
+        addTestCase("textDocument/formatting", \meth_td_formatting());
+        addTestCase("textDocument/rangeFormatting", \meth_td_rangeFormatting());
+        addTestCase("textDocument/onTypeFormatting", \meth_td_onTypeFormatting());
+*/
+        addTestCase("textDocument/definition", \meth_td_definition());
+/*
+        addTestCase("textDocument/codeAction", \meth_td_codeAction());
+        addTestCase("textDocument/codeLens", \meth_td_codeLens());
+        addTestCase("codeLens/resolve", \meth_codeLens_resolve());
+        addTestCase("textDocument/documentLink", \meth_td_documentLink());
+        addTestCase("documentLink/resolve", \meth_documentLink_resolve());
+        addTestCase("textDocument/rename", \meth_td_rename());
+*/
+        set_return_value(main());
+    }
+
+    testTopLevelValidation() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        # do not call p.sendRequest() here becasue we are trying to screw the message
+        string s = make_jsonrpc_request("initialize", NOTHING, p.nextId(), hash());
+        p.sendRequestRaw(s);
+
+        p.wait(1s);
+
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+
+        hash resp = parse_json(res[0]);
+        hash expected = ( "id" : 0, "error" : ( "code" : -32600, "message": "Missing jsonrpc attribute"));
+        assertEq(expected, resp, "error must be received");
+    }
+
+    testNonExistingMethod() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        p.sendRequest(p.nextId(), "foo");
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "0", "error" : ( "code" : -32601, "message": "method 'foo' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    testNegativeInitialize() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration");
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "0", "error" : ( "code" : -32002, "message": "server has not been initialized yet"));
+        assertEq(expected, resp, "error 'not initialized' must be received");
+    }
+
+    testInitializeMissingAttributes() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        hash data = (
+                "processId" : getpid(), # mandatory
+                "rootUri" : "/xxx", # really non-existing path
+                #"initializationOptions" # optional
+                "capabilities" : hash(),
+                #"trace"
+            );
+
+
+        foreach string i in (data.keys()) {
+            p.sendRequest(p.nextId(), "initialize", data - i);
+            p.wait(1s);
+
+            list res = p.getStdout();
+            assertEq(True, res.size() == 1, "stdout must contain one line of data");
+            hash resp = parse_json(res[0]);
+            # resulting hash is too long to prepare it by hand
+            assertEq(-32600, resp.error.code, "error code value must be -32602");
+            assertEq(True, resp.error.message =~ /^mandatory attribute/, sprintf("error string for %s", i));
+        }
+    }
+
+    testInitializeWrongPath() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        hash clientCapabilies = (
+                "workspace" : hash(),
+                "textDocument" : hash(),
+                "experimental" : hash(),
+            );
+        hash data = (
+                "processId" : getpid(), # mandatory
+                "rootUri" : "/xxx", # really non-existing path
+                #"initializationOptions" # optional
+                "capabilities" : clientCapabilies,
+                #"trace"
+            );
+
+        # test non existing path -> error response
+        p.sendRequest(p.nextId(), "initialize", data + ("rootUri" : "/xxx"));
+        p.wait(1s);
+
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        # resulting hash is too long to prepare it by hand
+        assertEq(-32602, resp.error.code, "error code value must be -32602");
+        assertEq(True, resp.error.message =~ /^WORKSPACE-PATH-ERROR: Cannot open directory/, "exception must be WORKSPACE-PATH-ERROR");
+    }
+
+    testInitialize() {
+        QlsProcess p(self, m_options.verbose);
+        on_exit p.terminate();
+
+        hash clientCapabilies = (
+                "workspace" : hash(),
+                "textDocument" : hash(),
+                "experimental" : hash(),
+            );
+        hash data = (
+                "processId" : getpid(), # mandatory
+                "rootUri" : "./test_workspace",
+                #"initializationOptions" # optional
+                "capabilities" : hash(), #clientCapabilies,
+                #"trace"
+            );
+
+        # and now the real initialization
+        p.sendRequest(p.nextId(), "initialize", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq(True, resp.result.hasKey("capabilities", "initialize must return 'capabilities' key"));
+
+        p.sendRequest(p.nextId(), "initialized");
+        # no response from initialized
+
+        p.sendRequest(p.nextId(), "shutdown");
+        p.wait(1s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("2", resp.id, "shutdown id");
+        assertEq(hash(), resp.result, "shutdown result");
+
+        p.sendRequest(p.nextId(), "exit");
+        p.wait(1s);
+        assertEq(False, p.running(), "QLS process must be stopped at this point");
+    }
+
+    private getInitiaizedQls() {
+        QlsProcess p(self, m_options.verbose);
+
+        hash clientCapabilies = (
+                "workspace" : hash(),
+                "textDocument" : hash(),
+                "experimental" : hash(),
+            );
+        hash data = (
+                "processId" : getpid(), # mandatory
+                "rootUri" : "./test_workspace",
+                #"initializationOptions" # optional
+                "capabilities" : hash(), #clientCapabilies,
+                #"trace"
+            );
+
+        # and now the real initialization
+        p.sendRequest(p.nextId(), "initialize", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq(True, resp.result.hasKey("capabilities", "initialize must return 'capabilities' key"));
+
+        p.sendRequest(p.nextId(), "initialized");
+        # no response from initialized
+
+        return p;
+    }
+
+    private closeQls(QlsProcess p) {
+        on_exit p.terminate();
+
+        softstring shutdownId = p.nextId();
+        p.sendRequest(shutdownId, "shutdown");
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq(shutdownId, resp.id, "shutdown id");
+        assertEq(hash(), resp.result, "shutdown result");
+
+        p.sendRequest(p.nextId(), "exit");
+        p.wait(1s);
+        assertEq(False, p.running(), "QLS process must be stopped at this point");
+    }
+
+    # Workspace methods
+
+    meth_ws_didChangeConfiguration() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_ws_didChangeWatchedFiles() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_ws_symbol() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_ws_executeCommand() {
+        assertEq(True, False, "todo");
+    }
+
+    # Document methods
+
+    meth_td_didOpen() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_didChange() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_willSave() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_willSaveWaitUntil() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_didSave() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_didClose() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_completion() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_completionItem_resolve() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_hover() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_signatureHelp() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_references() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_documentHighlight() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_documentSymbol() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_formatting() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_rangeFormatting() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_onTypeFormatting() {
+        assertEq(True, False, "todo");
+    }
+
+    meth_td_definition() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        # negative test - no arguments
+        p.sendRequest(p.nextId(), "textDocument/definition");
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq(-32600, resp.error.code, "error '-32600' must be received");
+        assertEq("Mandatory attribute 'textDocument' is missing", resp.error.message, "error tag must be received");
+
+        # negative test: incomplete request
+        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : hash()));
+        p.wait(1s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq(-32600, resp.error.code, "error '-32600' must be received");
+        assertEq("Mandatory attribute 'textDocument/uri' is missing", resp.error.message, "error tag must be received");
+
+        # negative test: non existing open file
+        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : ("uri" : "xxx.xx", "position" : ("line" : 0, "character" : 0))));
+        p.wait(1s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq(-32602, resp.error.code, "error '-32600' must be received");
+        assertEq("uri: \"xxx.xx\" does not exist in parsed documents", resp.error.message, "an invalid uri must be given");
+
+        # positive test - open a doc first
+        hash data = (
+                "uri" : "./test_workspace/mylibs.ql",
+                "languageId" : "Qore", # TODO/FIXME: ???
+                "version" : 1,
+                "text" : File::readTextFile("./test_workspace/mylibs.ql"),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didOpen", ("textDocument" : data));
+        p.wait(1s);
+
+        data = (
+                "uri" : "./test_workspace/mylibs.ql",
+                "position" : (
+                        "line" : 1,
+                        "character" : 8,
+                    ),
+            );
+        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : data));
+        p.wait(1s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+printf("%N\n", resp);
+        assertEq(True, False, "error '-32600' must be received");
+
+    }
+
+    meth_td_codeAction() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/codeAction", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/codeAction' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    meth_td_codeLens() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/codeLens", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/codeLens' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    meth_codeLens_resolve() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "codeLens/resolve", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'codeLens/resolve' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    meth_td_documentLink() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/documentLink", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/documentLink' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    meth_documentLink_resolve() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/resolve", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/resolve' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+    meth_td_rename() {
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/rename", data);
+        p.wait(1s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/rename' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
+    }
+
+} # class Main
