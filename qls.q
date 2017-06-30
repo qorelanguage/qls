@@ -59,6 +59,12 @@ class QLS {
         #! LSP header and content parts delimiter
         const LSP_PART_DELIMITER = "\r\n";
 
+        #! MIN log level
+        const LOGLEVEL_MIN = 0;
+
+        #! MAX log level
+        const LOGLEVEL_MAX = 3;
+
         #! Whether QLS has been initialized ("initialize" method called)
         bool initialized = False;
 
@@ -432,28 +438,89 @@ log(0, sprintf("response: %n", response));
 
     #! "workspace/didChangeConfiguration" notification method handler
     private:internal *string meth_ws_didChangeConfiguration(hash request) {
+        if (!request.params.hasKey("settings")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "didChangeConfiguration notification must contain attribute 'settings'"
+                                            );
+        }
+        if (request.params.settings.typeCode() != NT_HASH || !request.params.settings.hasKey("qore")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "didChangeConfiguration notification must contain attribute 'settings.qore'"
+                                            );
+        }
+        if (request.params.settings.qore.typeCode() != NT_HASH){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "didChangeConfiguration notification must contain attribute 'settings.qore' of type hash"
+                                            );
+        }
+        list allowed_keys = ("logging", "appendToLog", "logVerbosity", "logFile");
+        foreach string i in (request.params.settings.qore.keys()) {
+            if (!inlist(i, allowed_keys)) {
+                return Notification::showMessage(jsonRpcVer,
+                                                 MessageType.Warning,
+                                                 sprintf("didChangeConfiguration notification contains unknown attribute 'settings.qore.%s'", i)
+                                                );
+            }
+        }
+
         clientConfig = request.params.settings;
         log(0, "changed configuration received: %N", clientConfig);
+
         logging = clientConfig.qore.logging ?? False;
         appendToLog = clientConfig.qore.appendToLog ?? True;
         logVerbosity = clientConfig.qore.logVerbosity ?? 0;
-        logVerbosity = (logVerbosity < 0) ? 0 : ((logVerbosity > 3) ? 3 : logVerbosity);
+        logVerbosity = (logVerbosity < LOGLEVEL_MIN) ? LOGLEVEL_MIN : ((logVerbosity > LOGLEVEL_MAX) ? LOGLEVEL_MAX : logVerbosity);
         if (clientConfig.qore.logFile)
             logFile = clientConfig.qore.logFile;
         else
             logFile = getDefaultLogFilePath();
+
         prepareLogFile(logFile);
 
-        if (logging && !canOpenLog)
+        if (logging && !canOpenLog) {
             return Notification::showMessage(jsonRpcVer, MessageType.Warning,
                 "QLS log file could not be opened. Logging will be turned off.");
-        return NOTHING;
+        }
+        return Notification::showMessage(jsonRpcVer, MessageType.Info,
+                                        "Qore's settings have been saved");
     }
 
     #! "workspace/didChangeWatchedFiles" notification method handler
     private:internal *string meth_ws_didChangeWatchedFiles(hash request) {
-        list changes = request.params.changes;
-        foreach hash change in (changes) {
+        if (request.params.changes.typeCode() != NT_LIST || !request.params.hasKey("changes")) {
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "didChangeWatchedFiles: request 'changes' must be a list"
+                                            );
+        }
+
+        ListIterator it(request.params.changes);
+        while (it.next()) {
+            if (it.getValue().typeCode() != NT_HASH) {
+                return Notification::showMessage(jsonRpcVer,
+                                                 MessageType.Warning,
+                                                 "didChangeWatchedFiles: request 'changes/x' member must be a hash"
+                                                );
+            }
+
+            hash change = it.getValue();
+
+            if (!change.hasKey("type")) {
+                return Notification::showMessage(jsonRpcVer,
+                                                 MessageType.Warning,
+                                                 "didChangeWatchedFiles: request 'changes/x/type' has to exist"
+                                                );
+            }
+            if (!change.hasKey("uri")) {
+                return Notification::showMessage(jsonRpcVer,
+                                                 MessageType.Warning,
+                                                 "didChangeWatchedFiles: request 'changes/x/uri' has to exist"
+                                                );
+            }
+
             switch (change.type) {
                 case FileChangeType.Created:
                 case FileChangeType.Changed:
@@ -469,6 +536,10 @@ log(0, sprintf("response: %n", response));
 
     #! "workspace/symbol" method handler
     private:internal *string meth_ws_symbol(hash request) {
+        if (!request.params.hasKey("query") || request.params.query.typeCode() != NT_STRING) {
+            return ErrorResponse::invalidRequest(request, "workspace/symbol params must contain 'query' attribute of type string");
+        }
+
         list symbols = ();
         string query = request.params.query;
         log(1, "workspace symbols requested; query: '%s'", query);
@@ -642,14 +713,14 @@ log(0, sprintf("response: %n", response));
         if (!request.params.textDocument.hasKey("uri")) {
             return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/uri' is missing");
         }
-        if (!request.params.textDocument.hasKey("position")) {
-            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position' is missing");
+        if (!request.params.hasKey("position")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'position' is missing");
         }
-        if (!request.params.textDocument.position.hasKey("line")) {
-            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position/line' is missing");
+        if (!request.params.position.hasKey("line")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'position/line' is missing");
         }
-        if (!request.params.textDocument.position.hasKey("character")) {
-            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'textDocument/position/character' is missing");
+        if (!request.params.position.hasKey("character")) {
+            return ErrorResponse::invalidRequest(request, "Mandatory attribute 'position/character' is missing");
         }
 
         if (!exists documents{request.params.textDocument.uri}) {

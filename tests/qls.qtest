@@ -37,7 +37,6 @@ class QlsProcess inherits Process
                     printf("%n: stderr: %N\n", now_ms(), e);
                 }
             }
-            sleep(1s);
         }
     }
 
@@ -68,7 +67,7 @@ class QlsProcess inherits Process
         return m_id++;
     }
 
-    sendRequest(softstring id, string method, *hash arg) {
+    sendRequest(softstring id, string method, any arg) {
         string s = make_jsonrpc_request(method, "2.0", id, arg);
         sendRequestRaw(s);
     }
@@ -76,7 +75,6 @@ class QlsProcess inherits Process
     sendRequestRaw(string msg) {
         write(sprintf("Content-Length: %d\r\n", msg.size()));
         write("\r\n");
-printf("MSG: %s\n", msg);
         write(msg);
     }
 
@@ -107,7 +105,8 @@ class Main inherits QUnit::Test
         addTestCase("workspace/didChangeWatchedFiles", \meth_ws_didChangeWatchedFiles());
         addTestCase("workspace/symbol", \meth_ws_symbol());
         addTestCase("workspace/executeCommand", \meth_ws_executeCommand());
-
+*/
+/*
         # Document methods
         addTestCase("textDocument/didOpen", \meth_td_didOpen());
         addTestCase("textDocument/didChange", \meth_td_didChange());
@@ -125,9 +124,7 @@ class Main inherits QUnit::Test
         addTestCase("textDocument/formatting", \meth_td_formatting());
         addTestCase("textDocument/rangeFormatting", \meth_td_rangeFormatting());
         addTestCase("textDocument/onTypeFormatting", \meth_td_onTypeFormatting());
-*/
         addTestCase("textDocument/definition", \meth_td_definition());
-/*
         addTestCase("textDocument/codeAction", \meth_td_codeAction());
         addTestCase("textDocument/codeLens", \meth_td_codeLens());
         addTestCase("codeLens/resolve", \meth_codeLens_resolve());
@@ -146,7 +143,7 @@ class Main inherits QUnit::Test
         string s = make_jsonrpc_request("initialize", NOTHING, p.nextId(), hash());
         p.sendRequestRaw(s);
 
-        p.wait(1s);
+        p.wait(2s);
 
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
@@ -161,7 +158,7 @@ class Main inherits QUnit::Test
         on_exit p.terminate();
 
         p.sendRequest(p.nextId(), "foo");
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -174,7 +171,7 @@ class Main inherits QUnit::Test
         on_exit p.terminate();
 
         p.sendRequest(p.nextId(), "workspace/didChangeConfiguration");
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -197,7 +194,7 @@ class Main inherits QUnit::Test
 
         foreach string i in (data.keys()) {
             p.sendRequest(p.nextId(), "initialize", data - i);
-            p.wait(1s);
+            p.wait(2s);
 
             list res = p.getStdout();
             assertEq(True, res.size() == 1, "stdout must contain one line of data");
@@ -227,7 +224,7 @@ class Main inherits QUnit::Test
 
         # test non existing path -> error response
         p.sendRequest(p.nextId(), "initialize", data + ("rootUri" : "/xxx"));
-        p.wait(1s);
+        p.wait(2s);
 
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
@@ -256,7 +253,7 @@ class Main inherits QUnit::Test
 
         # and now the real initialization
         p.sendRequest(p.nextId(), "initialize", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -266,7 +263,7 @@ class Main inherits QUnit::Test
         # no response from initialized
 
         p.sendRequest(p.nextId(), "shutdown");
-        p.wait(1s);
+        p.wait(2s);
         res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         resp = parse_json(res[0]);
@@ -274,7 +271,7 @@ class Main inherits QUnit::Test
         assertEq(hash(), resp.result, "shutdown result");
 
         p.sendRequest(p.nextId(), "exit");
-        p.wait(1s);
+        p.wait(2s);
         assertEq(False, p.running(), "QLS process must be stopped at this point");
     }
 
@@ -296,7 +293,7 @@ class Main inherits QUnit::Test
 
         # and now the real initialization
         p.sendRequest(p.nextId(), "initialize", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -313,7 +310,7 @@ class Main inherits QUnit::Test
 
         softstring shutdownId = p.nextId();
         p.sendRequest(shutdownId, "shutdown");
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -321,26 +318,156 @@ class Main inherits QUnit::Test
         assertEq(hash(), resp.result, "shutdown result");
 
         p.sendRequest(p.nextId(), "exit");
-        p.wait(1s);
+        p.wait(2s);
         assertEq(False, p.running(), "QLS process must be stopped at this point");
     }
 
     # Workspace methods
 
     meth_ws_didChangeConfiguration() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        # negative: completely wrong args
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration", ("foo" : 1));
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeConfiguration notification must contain attribute 'settings'", resp.params.message, "a window/showMessage params: string");
+
+        # negative: sort of wrong message
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration", ("settings" : 1));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeConfiguration notification must contain attribute 'settings.qore'", resp.params.message, "a window/showMessage params: string");
+
+        # negative: sort of wrong message
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration", ("settings" : ("qore" : 1)));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeConfiguration notification must contain attribute 'settings.qore' of type hash", resp.params.message, "a window/showMessage params: string");
+
+        # negative: sort of wrong message
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration", ("settings" : ("qore" : ("foo" : 1))));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeConfiguration notification contains unknown attribute 'settings.qore.foo'", resp.params.message, "a window/showMessage params: string");
+
+        # positive
+        p.sendRequest(p.nextId(), "workspace/didChangeConfiguration", ("settings" : ("qore" : ("logVerbosity" : 4))));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(3, resp.params.type, "a window/showMessage params: 2");
+        assertEq("Qore's settings have been saved", resp.params.message, "a window/showMessage params: string");
     }
 
     meth_ws_didChangeWatchedFiles() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        # negative: completely wrong args
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("foo" : 1));
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeWatchedFiles: request 'changes' must be a list", resp.params.message, "a window/showMessage params: string");
+
+        # negative: completely wrong args
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("changes" : range(1,2)));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeWatchedFiles: request 'changes/x' member must be a hash", resp.params.message, "a window/showMessage params: string");
+
+        # negative: completely wrong args
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("changes" : (("foo":1),("foo":2))));
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "a window/showMessage must be received");
+        assertEq(2, resp.params.type, "a window/showMessage params: 2");
+        assertEq("didChangeWatchedFiles: request 'changes/x/type' has to exist", resp.params.message, "a window/showMessage params: string");
+
+        # negative: changing non-existing document - there is no way how to check response now
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("changes" : (("uri":"xxx.xx", "type" : 3),)));
+        p.wait(2s);
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+
+        # negative: opening non-existing document - there is no way how to check response now
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("changes" : (("uri":"xxx.xx", "type" : 1),)));
+        p.wait(2s);
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+
+        # positive - there is no way how to check response now
+        p.sendRequest(p.nextId(), "workspace/didChangeWatchedFiles", ("changes" : (("uri":"./test_workspace/mylibs.ql", "type" : 2),)));
+        p.wait(2s);
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
     }
 
     meth_ws_symbol() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        # negative: completely wrong args
+        p.sendRequest(p.nextId(), "workspace/symbol", ("foo" : 1));
+        p.wait(2s);
+        list res = p.getStdout();
+        hash resp = parse_json(res[0]);
+        assertEq(-32600, resp.error.code, "error '-32600' must be received");
+        assertEq("workspace/symbol params must contain 'query' attribute of type string", resp.error.message, "error message");
+
+        # positive
+        p.sendRequest(p.nextId(), "workspace/symbol", ("query" : "foo"));
+        p.wait(2s);
+        res = p.getStdout();
+        resp = parse_json(res[0]);
+        assertEq(2, resp.result.size(), "2 hashes in list expected");
+
+        # positive - substring
+        p.sendRequest(p.nextId(), "workspace/symbol", ("query" : "fo"));
+        p.wait(2s);
+        res = p.getStdout();
+        hash resp1 = parse_json(res[0]);
+        assertEq(resp.result, resp1.result, "2 lists must be the same");
     }
 
     meth_ws_executeCommand() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "workspace/executeCommand", data);
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'workspace/executeCommand' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
     }
 
     # Document methods
@@ -398,15 +525,45 @@ class Main inherits QUnit::Test
     }
 
     meth_td_formatting() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/formatting", data);
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/formatting' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
     }
 
     meth_td_rangeFormatting() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/rangeFormatting", data);
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/rangeFormatting' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
     }
 
     meth_td_onTypeFormatting() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = hash();
+        p.sendRequest(p.nextId(), "textDocument/onTypeFormatting", data);
+        p.wait(2s);
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        hash expected = ( "jsonrpc" : "2.0", "id" : "2", "error" : ( "code" : -32601, "message": "method 'textDocument/onTypeFormatting' is not implemented"));
+        assertEq(expected, resp, "error 'not implemented' must be received");
     }
 
     meth_td_definition() {
@@ -415,7 +572,7 @@ class Main inherits QUnit::Test
 
         # negative test - no arguments
         p.sendRequest(p.nextId(), "textDocument/definition");
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -424,7 +581,7 @@ class Main inherits QUnit::Test
 
         # negative test: incomplete request
         p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : hash()));
-        p.wait(1s);
+        p.wait(2s);
         res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         resp = parse_json(res[0]);
@@ -432,8 +589,8 @@ class Main inherits QUnit::Test
         assertEq("Mandatory attribute 'textDocument/uri' is missing", resp.error.message, "error tag must be received");
 
         # negative test: non existing open file
-        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : ("uri" : "xxx.xx", "position" : ("line" : 0, "character" : 0))));
-        p.wait(1s);
+        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : ("uri" : "xxx.xx"), "position" : ("line" : 0, "character" : 0)));
+        p.wait(2s);
         res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         resp = parse_json(res[0]);
@@ -449,23 +606,33 @@ class Main inherits QUnit::Test
             );
 
         p.sendRequest(p.nextId(), "textDocument/didOpen", ("textDocument" : data));
-        p.wait(1s);
+        p.wait(2s);
 
-        data = (
-                "uri" : "./test_workspace/mylibs.ql",
-                "position" : (
-                        "line" : 1,
-                        "character" : 8,
-                    ),
-            );
-        p.sendRequest(p.nextId(), "textDocument/definition", ("textDocument" : data));
-        p.wait(1s);
+        # here we should obtain disgnostics for the open doc
         res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         resp = parse_json(res[0]);
-printf("%N\n", resp);
-        assertEq(True, False, "error '-32600' must be received");
+        assertEq("textDocument/publishDiagnostics", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("./test_workspace/mylibs.ql", resp.params.uri, "expected ./test_workspace/mylibs.ql file");
+        assertEq(list(), resp.params.diagnostics, "expected no errrors in diagnostics");
 
+        p.wait(2s);
+        data = (
+                "textDocument" : (
+                        "uri" : "./test_workspace/mylibs.ql",
+                    ),
+                "position" : (
+                        "line" : 6,
+                        "character" : 8,
+                    ),
+            );
+        p.sendRequest(p.nextId(), "textDocument/definition", data);
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("./test_workspace/mylibs.ql", resp.result[0].uri, "expected ./test_workspace/mylibs.ql file");
+        assertEq(("start" : ("line" : 1, "character" : 4), "end":("line":1, "character": 10)), resp.result[0].range, "expected range");
     }
 
     meth_td_codeAction() {
@@ -474,7 +641,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "textDocument/codeAction", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -488,7 +655,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "textDocument/codeLens", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -502,7 +669,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "codeLens/resolve", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -516,7 +683,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "textDocument/documentLink", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -530,7 +697,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "textDocument/resolve", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
@@ -544,7 +711,7 @@ printf("%N\n", resp);
 
         hash data = hash();
         p.sendRequest(p.nextId(), "textDocument/rename", data);
-        p.wait(1s);
+        p.wait(2s);
         list res = p.getStdout();
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);

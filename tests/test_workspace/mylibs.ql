@@ -4,6 +4,7 @@ sub mylog(string msg) {
 }
 
 int sub foo(int i) {
+    mylog("foo");
     return i;
 }
 

@@ -115,7 +115,14 @@ public class Document {
     #! Parse document from a file.
     private:internal parseFile() {
         parseInit();
-        string filePath = uri.substr(7); # trim "file://"
+
+        string filePath;
+        # in some cases the uri does not start with "file://"
+        if (uri =~ /^file:\/\//)
+            filePath = uri.substr(7); # trim "file://"
+        else
+            filePath = uri;
+
         tree = parser.parseFile(filePath);
         if (!tree) {
             handleParseErrors(1);
