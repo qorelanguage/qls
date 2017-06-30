@@ -38,11 +38,11 @@
 
 %requires ./qlib/Document.qm
 %requires ./qlib/ErrorResponse.qm
+%requires ./qlib/Files.qm
 %requires ./qlib/Messenger.qm
 %requires ./qlib/Notification.qm
 %requires ./qlib/SymbolInfoKinds.qm
 
-%include ./qlib/Files.q
 %include ./qlib/ServerCapabilities.q
 
 #! LSP FileChangeType definition
