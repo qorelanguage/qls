@@ -296,8 +296,23 @@ class QLS {
     #=================
 
     private:internal parseFilesInWorkspace() {
+        if (!rootPath) {
+            log(0, "WARNING: root path not set - workspace files will not be parsed\n");
+            return;
+        }
+
         # find all Qore files in the workspace
-        list qoreFiles = Files::find_qore_files(rootPath);
+        list qoreFiles;
+        try {
+            qoreFiles = Files::find_qore_files(rootPath);
+        }
+        catch (ex) {
+            if (ex.err == "WORKSPACE-PATH-ERROR")
+                log(0, "ERROR: root path could not be opened!\n");
+            else
+                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
+            return;
+        }
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
@@ -317,7 +332,17 @@ class QLS {
 
     private:internal parseStdModules() {
         # find standard Qore modules
-        list moduleFiles = Files::find_std_modules();
+        list moduleFiles;
+        try {
+            moduleFiles = Files::find_std_modules();
+        }
+        catch (ex) {
+            if (ex.err == "WORKSPACE-PATH-ERROR")
+                log(0, "ERROR: standard Qore module path could not be opened!\n");
+            else
+                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
+            return;
+        }
 
         # create a list of file URIs
         moduleFiles = map "file://" + $1, moduleFiles;

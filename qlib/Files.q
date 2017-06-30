@@ -25,41 +25,38 @@ namespace Files
 {
 
 const QORE_EXTENSIONS = (
-        # qore
-        "q"         : "Qore script",
-        "ql"        : "Qore library",
-        "qc"        : "Qore class",
-        "qm"        : "Qore user module",
-        "qtest"     : "Qore unit test",
-        # qorus
-        "qwf"       : "Qorus workflow definition",
-        "qsd"       : "Qorus service",
-        "qfd"       : "Qorus functions",
-        "qjob"      : "Qorus job",
-        "qconst"    : "Qorus constant",
-        #"qmapper"   : "Qorus mapper",
-        "qscript"   : "Qorus deployment script",
-        "qsm"       : "Qorus schema module",
-        #"qvmap"    : "Qorus value map"
-    );
+    # Qore file extensions
+    "q"         : "Qore script",
+    "ql"        : "Qore library",
+    "qc"        : "Qore class",
+    "qm"        : "Qore user module",
+    "qtest"     : "Qore unit test",
+
+    # Qorus file extensions
+    "qwf"       : "Qorus workflow definition",
+    "qsd"       : "Qorus service",
+    "qfd"       : "Qorus functions",
+    "qjob"      : "Qorus job",
+    "qconst"    : "Qorus constant",
+    #"qmapper"  : "Qorus mapper",
+    "qscript"   : "Qorus deployment script",
+    "qsm"       : "Qorus schema module",
+    #"qvmap"    : "Qorus value map"
+);
 
 bool sub is_valid_qore_file(string path) {
     *string ext = (path =~ x/\.([a-z0-9]+)$/i)[0];
-    if (ext && QORE_EXTENSIONS.hasKey(ext)) {
+    if (ext && QORE_EXTENSIONS.hasKey(ext))
         return True;
-    }
 
     # here we are trying to simulate magic as specified in Freedesktop's
     # Shared MIME-info Database specification.
     # For Qore we just assume that "#!/usr/bin/env qore" is used
     FileLineIterator it(path);
     while (it.next()) {
-        if (it.getValue().regex("^#!/usr/bin/env qore")) {
+        if (it.getValue().regex("^#!/usr/bin/env qore"))
             return True;
-        }
-        else {
-            break;
-        }
+        break;
     }
 
     return False;
@@ -71,18 +68,16 @@ bool sub is_valid_qore_file(string path) {
 */
 list sub find_qore_files(string path) {
     Dir d();
-    if (!d.chdir(path)) {
+    if (!d.chdir(path))
         throw "WORKSPACE-PATH-ERROR", sprintf("Cannot open directory: %s", path);
-    }
 
     list ret = list();
 
     ListIterator it = d.listFiles().iterator();
     while (it.next()) {
         string fpath = sprintf("%s%s%s", path, DirSep, it.getValue());
-        if (is_valid_qore_file(fpath)) {
+        if (is_valid_qore_file(fpath))
             push ret, fpath;
-        }
     }
 
     it = d.listDirs().iterator();
