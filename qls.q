@@ -59,16 +59,16 @@ class QLS {
         #! LSP header and content parts delimiter
         const LSP_PART_DELIMITER = "\r\n";
 
-        #! Whether QLS has been initialized ("initialize" method called)
+        #! Whether QLS has been initialized ("initialize" method called).
         bool initialized = False;
 
-        #! Whether client is fully initialized ("initialized" method called)
+        #! Whether client is fully initialized ("initialized" method called).
         bool clientInitialized = False;
 
-        #! Whether QLS has been shut down ("shutdown" method called)
+        #! Whether QLS has been shut down ("shutdown" method called).
         bool shutdown = False;
 
-        # Whether the main loop should still run (or QLS should quit)
+        # Whether the main loop should still run (or QLS should quit).
         bool running = True; 
 
         # Exit code to use when quitting
@@ -89,7 +89,7 @@ class QLS {
         #! Client capabilities
         hash clientCapabilities;
 
-        #! Client configuration.
+        #! Client configuration
         hash clientConfig;
 
         #! Whether to log QLS operations.
@@ -104,7 +104,7 @@ class QLS {
         #! Logging verbosity. Only messages with this level or lower will be logged.
         int logVerbosity = 0;
 
-        #! Log file.
+        #! Log file
         string logFile;
 
         #! Map of JSON-RPC methods
@@ -113,10 +113,10 @@ class QLS {
         #! Open text documents. Hash keys are document URIs.
         hash documents;
 
-        #! Qore Documents in the current workspace.
+        #! Qore Documents in the current workspace
         hash workspaceDocs;
 
-        #! Standard Qore modules.
+        #! Standard Qore modules
         hash stdModuleDocs;
     }
 

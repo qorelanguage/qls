@@ -94,20 +94,19 @@ public class Document {
         parser = new astparser::AstParser();
     }
 
-    private:internal handleParseErrors(int rc) {
-        if (rc) {
-            parseOk = False;
-            parseError = sprintf("Error parsing text document '%s' - return code: %d\n\n", uri, rc);
-            if (parser.getErrorCount()) {
-                parseError += "Errors:\n\n";
-                *list diagnostics = parser.getDiagnostics();
-                int i = 1;
-                foreach hash diag in (diagnostics) {
-                    parseError += sprintf("%d) %s:%d:%d: %s\n\n", i++, docName,
-                        diag.range.start.line,
-                        diag.range.start.character,
-                        diag.message);
-                }
+    private:internal handleParseErrors() {
+        tree = NOTHING;
+        parseOk = False;
+        parseError = sprintf("Error parsing text document '%s'\n\n", uri);
+        if (parser.getErrorCount()) {
+            parseError += "Errors:\n\n";
+            *list diagnostics = parser.getDiagnostics();
+            int i = 1;
+            foreach hash diag in (diagnostics) {
+                parseError += sprintf("%d) %s:%d:%d: %s\n\n", i++, docName,
+                    diag.range.start.line,
+                    diag.range.start.character,
+                    diag.message);
             }
         }
     }
@@ -117,8 +116,8 @@ public class Document {
         parseInit();
         string filePath = uri.substr(7); # trim "file://"
         tree = parser.parseFile(filePath);
-        if (!tree) {
-            handleParseErrors(1);
+        if (!tree || parser.getErrorCount()) {
+            handleParseErrors();
             stderr.printf(parseError);
         }
     }
@@ -127,8 +126,8 @@ public class Document {
     private:internal parseText() {
         parseInit();
         tree = parser.parseString(text);
-        if (!tree) {
-            handleParseErrors(1);
+        if (!tree || parser.getErrorCount()) {
+            handleParseErrors();
             stderr.printf(parseError);
         }
     }
@@ -162,7 +161,7 @@ public class Document {
         version = n_version;
     }
 
-    #! Return info about symbol at the passed position.
+    #! Hover info for when no symbol info found or parse error happened.
     hash hover(hash Position) {
         int line = Position.line;
         int char = Position.character;
@@ -182,25 +181,9 @@ public class Document {
             };
         }
 
-        AstTreeSearcher searcher();
-        *hash results;
-        if (tree)
-            results = searcher.hover(tree, Position.line, Position.character);
-        if (!results)
-            return {
-                "contents": "no results",
-                "range": {
-                    "start": {
-                        "line": line,
-                        "character": char
-                    },
-                    "end": {
-                        "line": line,
-                        "character": char+1
-                    }
-                }
-            };
-        return results;
+        return {
+            "contents": list(),
+        };
     }
 
     #! Find info about symbol at the passed position.
