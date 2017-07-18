@@ -564,6 +564,8 @@ class QLS {
 
         list symbols = ();
         string query = symbolInfo.name;
+        if (query.equalPartial("*"))
+            query = query.substr(1);
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
 
@@ -636,6 +638,8 @@ class QLS {
 
         list symbols = ();
         string query = symbolInfo.name;
+        if (query.equalPartial("*"))
+            query = query.substr(1);
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
 
