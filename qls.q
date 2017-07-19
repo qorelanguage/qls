@@ -568,6 +568,7 @@ class QLS {
             query = query.substr(1);
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
+        map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
 
         for (int i = symbols.size()-1; i > 0; i--) {
             if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
@@ -579,11 +580,14 @@ class QLS {
             *hash description;
             if (documents{symbol.location.uri})
                 description = documents{symbol.location.uri}.hoverInfo(symbol.kind, symbol.location.range.start);
-            else
+            else if (workspaceDocs{symbol.location.uri})
                 description = workspaceDocs{symbol.location.uri}.hoverInfo(symbol.kind, symbol.location.range.start);
+            else if (stdModuleDocs{symbol.location.uri})
+                description = stdModuleDocs{symbol.location.uri}.hoverInfo(symbol.kind, symbol.location.range.start);
 
-            if (description)
-                result.contents += description.description;
+            if (description) {
+                result.contents += replace(description.description, "*", "\\*");;
+            }
         }
 
         return make_jsonrpc_response(jsonRpcVer, request.id, result);
@@ -642,6 +646,7 @@ class QLS {
             query = query.substr(1);
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
+        map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
 
         for (int i = symbols.size()-1; i > 0; i--) {
             if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
