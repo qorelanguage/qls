@@ -564,8 +564,13 @@ class QLS {
 
         list symbols = ();
         string query = symbolInfo.name;
-        if (query.equalPartial("*"))
-            query = query.substr(1);
+        {
+            int lastDoubleColon = query.rfind("::");
+            if (lastDoubleColon != -1)
+                query = query.substr(lastDoubleColon+2);
+            if (query.equalPartial("*"))
+                query = query.substr(1);
+        }
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
@@ -642,8 +647,13 @@ class QLS {
 
         list symbols = ();
         string query = symbolInfo.name;
-        if (query.equalPartial("*"))
-            query = query.substr(1);
+        {
+            int lastDoubleColon = query.rfind("::");
+            if (lastDoubleColon != -1)
+                query = query.substr(lastDoubleColon+2);
+            if (query.equalPartial("*"))
+                query = query.substr(1);
+        }
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
