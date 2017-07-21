@@ -92,7 +92,6 @@ class Main inherits QUnit::Test
 {
     constructor() : QUnit::Test("qls.q test", "1.0")
     {
-/*
         addTestCase("top level validation of request", \testTopLevelValidation());
         addTestCase("non existing method test", \testNonExistingMethod());
         addTestCase("initialize negative test", \testNegativeInitialize());
@@ -105,11 +104,11 @@ class Main inherits QUnit::Test
         addTestCase("workspace/didChangeWatchedFiles", \meth_ws_didChangeWatchedFiles());
         addTestCase("workspace/symbol", \meth_ws_symbol());
         addTestCase("workspace/executeCommand", \meth_ws_executeCommand());
-*/
-/*
+
         # Document methods
         addTestCase("textDocument/didOpen", \meth_td_didOpen());
         addTestCase("textDocument/didChange", \meth_td_didChange());
+/*
         addTestCase("textDocument/willSave", \meth_td_willSave());
         addTestCase("textDocument/willSaveWaitUntil", \meth_td_willSaveWaitUntil());
         addTestCase("textDocument/didSave", \meth_td_didSave());
@@ -258,6 +257,16 @@ class Main inherits QUnit::Test
         assertEq(True, res.size() == 1, "stdout must contain one line of data");
         hash resp = parse_json(res[0]);
         assertEq(True, resp.result.hasKey("capabilities", "initialize must return 'capabilities' key"));
+
+        hash expectedCapabilities = (
+                "textDocumentSync": 1,
+                "hoverProvider": "true",
+                "definitionProvider": "true",
+                "referencesProvider": "true",
+                "documentSymbolProvider": "true",
+                "workspaceSymbolProvider": "true",
+            );
+        assertEq(expectedCapabilities, resp.result.capabilities, "exact capabilities must be met");
 
         p.sendRequest(p.nextId(), "initialized");
         # no response from initialized
@@ -473,11 +482,121 @@ class Main inherits QUnit::Test
     # Document methods
 
     meth_td_didOpen() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = (
+                "uri" : "./test_workspace/mylibs.ql",
+                "languageId" : "Qore", # TODO/FIXME: ???
+                "version" : 1,
+                "text" : File::readTextFile("./test_workspace/mylibs.ql"),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didOpen", ("textDocument" : data));
+        p.wait(2s);
+
+        # here we should obtain disgnostics for the open doc
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq("textDocument/publishDiagnostics", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("./test_workspace/mylibs.ql", resp.params.uri, "expected ./test_workspace/mylibs.ql file");
+        assertEq(list(), resp.params.diagnostics, "expected no errrors in diagnostics");
     }
 
     meth_td_didChange() {
-        assertEq(True, False, "todo");
+        QlsProcess p = getInitiaizedQls();
+        on_exit closeQls(p);
+
+        hash data = (
+                "uri" : "./test_workspace/mylibs.ql",
+                "languageId" : "Qore", # TODO/FIXME: ???
+                "version" : 1,
+                "text" : File::readTextFile("./test_workspace/mylibs.ql"),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didOpen", ("textDocument" : data));
+        p.wait(2s);
+
+        # here we should obtain disgnostics for the open doc
+        list res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        hash resp = parse_json(res[0]);
+        assertEq("textDocument/publishDiagnostics", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("./test_workspace/mylibs.ql", resp.params.uri, "expected ./test_workspace/mylibs.ql file");
+        assertEq(list(), resp.params.diagnostics, "expected no errrors in diagnostics");
+
+        data = (
+                "textDocument" : (
+                        "uri" : "./test_workspace/mylibs.ql",
+                        "version" : 1,
+                    ),
+                "contentChanges" : ( # NOTE: it's a list!
+                        (
+                        # "range" :
+                        # "rangeLength" :
+                        "text" : File::readTextFile("./test_workspace/mylibs.ql"),
+                        ),
+                    ),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didChange", data);
+        p.wait(2s);
+
+        # here we should obtain disgnostics for the changed doc
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("textDocument/publishDiagnostics", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("./test_workspace/mylibs.ql", resp.params.uri, "expected ./test_workspace/mylibs.ql file");
+        assertEq(list(), resp.params.diagnostics, "expected no errrors in diagnostics");
+
+        # negative test - file is not open
+        data = (
+                "textDocument" : (
+                        "uri" : "./test_workspace/xxx.q",
+                        "version" : 1,
+                    ),
+                "contentChanges" : ( # NOTE: it's a list!
+                        (
+                        # "range" :
+                        # "rangeLength" :
+                        "text" : "xxx",
+                        ),
+                    ),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didChange", data);
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("window/showMessage", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("File ./test_workspace/xxx.q is not part of workspace", resp.params.message, "expected exact message");
+
+        # negative syntax error
+        data = (
+                "textDocument" : (
+                        "uri" : "./test_workspace/mylibs.ql",
+                        "version" : 1,
+                    ),
+                "contentChanges" : ( # NOTE: it's a list!
+                        (
+                        # "range" :
+                        # "rangeLength" :
+                        "text" : "xxx",
+                        ),
+                    ),
+            );
+
+        p.sendRequest(p.nextId(), "textDocument/didChange", data);
+        p.wait(2s);
+        res = p.getStdout();
+        assertEq(True, res.size() == 1, "stdout must contain one line of data");
+        resp = parse_json(res[0]);
+        assertEq("textDocument/publishDiagnostics", resp.method, "expected textDocument/publishDiagnostics notification");
+        assertEq("./test_workspace/mylibs.ql", resp.params.uri, "expected exact uri");
+        assertEq("syntax error, unexpected $end", resp.params.diagnostics[0].message, "expected exact diagnostics");
     }
 
     meth_td_willSave() {

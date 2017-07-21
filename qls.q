@@ -298,17 +298,7 @@ log(0, sprintf("response: %n", response));
         }
 
         # find all Qore files in the workspace
-        list qoreFiles;
-        try {
-            qoreFiles = Files::find_qore_files(rootPath);
-        }
-        catch (ex) {
-            if (ex.err == "WORKSPACE-PATH-ERROR")
-                log(0, "ERROR: root path could not be opened!\n");
-            else
-                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
-            return;
-        }
+        list qoreFiles = Files::find_qore_files(rootPath);
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
@@ -328,17 +318,7 @@ log(0, sprintf("response: %n", response));
 
     private:internal parseStdModules() {
         # find standard Qore modules
-        list moduleFiles;
-        try {
-            moduleFiles = Files::find_std_modules();
-        }
-        catch (ex) {
-            if (ex.err == "WORKSPACE-PATH-ERROR")
-                log(0, "ERROR: standard Qore module path could not be opened!\n");
-            else
-                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
-            return;
-        }
+        list moduleFiles = Files::find_std_modules();
 
         # create a list of file URIs
         moduleFiles = map "file://" + $1, moduleFiles;
@@ -379,16 +359,16 @@ log(0, sprintf("response: %n", response));
         if (!rootUri && rootPath)
             rootUri = "file://" + rootPath;
 
-        # parse all Qore file in the current workspace
         try {
+            # parse all Qore file in the current workspace
             parseFilesInWorkspace();
+
+            # parse standard Qore modules
+            parseStdModules();
         }
         catch (hash ex) {
             return ErrorResponse::invalidParams(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
-
-        # parse standard Qore modules
-        parseStdModules();
 
         # create response
         hash result = {
@@ -561,7 +541,38 @@ log(0, sprintf("response: %n", response));
 
     #! "textDocument/didOpen" notification method handler
     private:internal *string meth_td_didOpen(hash request) {
-        reference textDoc = \request.params.textDocument;
+        if (!request.params.hasKey("textDocument")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didOpen notification must contain attribute 'textDocument'"
+                                            );
+        }
+        if (!request.params.textDocument.hasKey("uri")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didOpen notification must contain attribute 'textDocument/uri'"
+                                            );
+        }
+        if (!request.params.textDocument.hasKey("languageId")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didOpen notification must contain attribute 'textDocument/languageId'"
+                                            );
+        }
+        if (!request.params.textDocument.hasKey("version")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didOpen notification must contain attribute 'textDocument/version'"
+                                            );
+        }
+        if (!request.params.textDocument.hasKey("text")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didOpen notification must contain attribute 'textDocument/text'"
+                                            );
+        }
+
+        hash textDoc = request.params.textDocument;
         *Document doc;
         if (workspaceDocs{textDoc.uri})
             doc = remove workspaceDocs{textDoc.uri};
@@ -579,11 +590,45 @@ log(0, sprintf("response: %n", response));
 
     #! "textDocument/didChange" notification method handler
     private:internal *string meth_td_didChange(hash request) {
-        reference textDoc = \request.params.textDocument;
-        reference doc = \documents{textDoc.uri};
-        foreach hash change in (request.params.contentChanges) {
-            doc.didChange(change);
+        if (!request.params.hasKey("textDocument")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didChange notification must contain attribute 'textDocument'"
+                                            );
         }
+        if (!request.params.textDocument.hasKey("uri")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didChange notification must contain attribute 'textDocument/uri'"
+                                            );
+        }
+        if (!request.params.textDocument.hasKey("version")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didChange notification must contain attribute 'textDocument/version'"
+                                            );
+        }
+
+        if (!request.params.hasKey("contentChanges")){
+            return Notification::showMessage(jsonRpcVer,
+                                             MessageType.Warning,
+                                             "textDocument/didChange notification must contain attribute 'contentChanges'"
+                                            );
+        }
+
+        hash textDoc = request.params.textDocument;
+        *Document doc = documents{textDoc.uri};
+        if (!exists doc) {
+            return Notification::showMessage(jsonRpcVer, MessageType.Error, sprintf("File %s is not part of workspace", textDoc.uri));
+        }
+
+        softlist changes = request.params.contentChanges;
+
+        ListIterator it(changes);
+        while (it.next()) {
+            doc.didChange(it.getValue());
+        }
+
         doc.changeVersion(textDoc.version);
         log(1, "text document changed: %s", textDoc.uri);
 
