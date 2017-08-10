@@ -34,6 +34,9 @@ module SymbolInfoKinds {
 }
 
 #! Describes the kind of symbol.
+/**
+    As described in https://github.com/Microsoft/language-server-protocol/blob/master/protocol.md
+ */
 public const ASTSymbolKind = {
     "None": 0,
     "File": 1,
@@ -69,6 +72,8 @@ public const ASTSymbolUsageKind = {
     "SuperclassDeclName": 105,
     "VarDeclName": 106,
     "VarDeclTypeName": 107,
+    "HashDeclName": 108,
+    "HashMemberName": 109,
 
     # Expressions.
     "AccessVariable": 200,
@@ -126,10 +131,12 @@ public const SymbolUsageStringMap = {
     "SuperclassDeclName": (ASTSymbolKind.Class),
     "VarDeclName": (ASTSymbolKind.Variable,),
     "VarDeclTypeName": (ASTSymbolKind.Class,),
+    "HashDeclName": (ASTSymbolKind.Interface, ASTSymbolKind.Class),
+    "HashMemberName": (ASTSymbolKind.Field, ASTSymbolKind.Variable),
 
     # Expressions.
-    "AccessVariable": (ASTSymbolKind.Variable, ASTSymbolKind.Constant),
-    "AccessMember": (ASTSymbolKind.Variable, ASTSymbolKind.Constructor, ASTSymbolKind.Method),
+    "AccessVariable": (ASTSymbolKind.Variable, ASTSymbolKind.Constant, ),
+    "AccessMember": (ASTSymbolKind.Variable, ASTSymbolKind.Field, ASTSymbolKind.Constructor, ASTSymbolKind.Method),
     "AssignmentLeft": (ASTSymbolKind.Variable,),
     "AssignmentRight": (ASTSymbolKind.Variable, ASTSymbolKind.Constant, ASTSymbolKind.Function, ASTSymbolKind.Method, ASTSymbolKind.Constructor),
     "BinaryLeft": (ASTSymbolKind.Variable, ASTSymbolKind.Constant),

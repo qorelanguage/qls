@@ -559,6 +559,7 @@ class QLS {
         Document doc = documents{request.params.textDocument.uri};
 
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);
+        #stderr.printf("si: %N\n", symbolInfo);
         if (!symbolInfo)
             return make_jsonrpc_response(jsonRpcVer, request.id, doc.hover(request.params.position));
 
@@ -574,11 +575,13 @@ class QLS {
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
+        #stderr.printf("symbols: %N\n", symbols);
 
         for (int i = symbols.size()-1; i > 0; i--) {
             if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
                 splice symbols, i, 1;
         }
+        #stderr.printf("after: %N\n", symbols);
 
         hash result = { "range": symbolInfo.range, "contents": list() };
         foreach hash symbol in (symbols) {
