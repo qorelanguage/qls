@@ -232,13 +232,14 @@ public class Document {
 
     #! Find all symbols.
     /**
+        @param fixSymbols whether to fix symbol infos
         @param bareNames whether to return bare symbol names (without namespace and class prefixes)
         @return list of symbols
     */
-    *list findSymbols(bool bareNames = False) {
+    *list findSymbols(bool fixSymbols = True, bool bareNames = False) {
         AstTreeSearcher searcher();
         if (tree)
-            return searcher.findSymbols(tree, uri, bareNames);
+            return searcher.findSymbols(tree, uri, fixSymbols, bareNames);
         return NOTHING;
     }
 
@@ -246,12 +247,15 @@ public class Document {
     /**
         @param query search query
         @param exactMatch whether to only find exact matches
+        @param fixSymbols whether to fix symbol infos
+        @param bareNames whether to return bare symbol names (without namespace and class prefixes)
+
         @return list of symbols
     */
-    list findMatchingSymbols(string query, bool exactMatch = False) {
+    list findMatchingSymbols(string query, bool exactMatch = False, bool fixSymbols = True, bool bareNames = False) {
         AstTreeSearcher searcher();
         if (tree) {
-            *list symbols = searcher.findMatchingSymbols(tree, uri, query, exactMatch);
+            *list symbols = searcher.findMatchingSymbols(tree, uri, query, exactMatch, fixSymbols, bareNames);
             return symbols ?? list();
         }
         return list();
