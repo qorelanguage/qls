@@ -85,7 +85,7 @@ class QLS {
         int parentProcessId;
 
         #! JSON-RPC version string (ex. "2.0")
-        string jsonRpcVer;
+        string jsonRpcVer = "2.0";
 
         #! Workspace root URI (ex. "file:///home/user/projects/lorem")
         string rootUri;
@@ -193,6 +193,18 @@ class QLS {
         exit(1);
     }
 
+    private:internal *string validateRequest(hash request) {
+        if (!request.hasKey("jsonrpc"))
+            return ErrorResponse::invalidRequest(request, "Missing 'jsonrpc' attribute");
+        if (!request.hasKey("method"))
+            return ErrorResponse::invalidRequest(request, "Missing 'method' attribute");
+        if (!methodMap.hasKey(request.method))
+            return ErrorResponse::methodNotFound(request);
+        if (!initialized && request.method != "initialize")
+            return ErrorResponse::notInitialized(request);
+        return NOTHING;
+    }
+
     private:internal initMethodMap() {
         methodMap = {
             # General methods
@@ -244,13 +256,16 @@ class QLS {
         while (running) {
             # read JSON-RPC request
             hash received = Messenger::receive();
-            if (received.error)
-                error(received.error);
-            if (!received.msg)
-                break;
-
-            # handle the request
-            *string response = handleRequest(received.msg);
+            *string response;
+            if (received.error) {
+                response = ErrorResponse::internalError(received.error);
+            }
+            else if (!received.msg) {
+                response = ErrorResponse::internalError("no message received");
+            }
+            else {
+                response = handleRequest(received.msg);
+            }
 
             # send back response if any
             if (response)
@@ -262,39 +277,19 @@ class QLS {
 
     *string handleRequest(string msg) {
         # parse the request
-        any parsed = parse_json(msg);
+        any request = parse_json(msg);
 
-        # handle the request
-        if (parsed.typeCode() == NT_HASH) {
-            hash request = parsed;
-            log(2, "req: %N", request);
-            *string response;
+        # validate request
+        if (request.typeCode() != NT_HASH)
+            return ErrorResponse::invalidRequest({"received": msg, "jsonrpc": jsonRpcVer}, "Invalid JSON-RPC request");
 
-            # find and run method handler
-            if (initialized) {
-                *code method = methodMap{request.method};
-                if (method) {
-                    response = method(request);
-                }
-                else {
-                    if (request.id) # if it's a request, send response
-                        response = ErrorResponse::methodNotFound(request);
-                    # else it's notification -> ignore
-                }
-            }
-            else { # run "initialize" method handler or return an error
-                if (request.method == "initialize")
-                    response = meth_initialize(request);
-                else
-                    response = ErrorResponse::notInitialized(request);
-            }
-            log(2, "response: %N", response);
-            return response;
-        }
-        else {
-            error("invalid JSON-RPC request");
-        }
-        return NOTHING;
+        *string validation = validateRequest(request);
+        if (validation)
+            return validation;
+
+        # call appropriate method
+        *string response = methodMap{request.method}(request);
+        return response;
     }
 
 
