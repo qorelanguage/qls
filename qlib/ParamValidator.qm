@@ -1,0 +1,179 @@
+#!/usr/bin/env qore
+# -*- mode: qore; indent-tabs-mode: nil -*-
+
+/*  ParamValidator.qm Copyright 2017 Qore Technologies, s.r.o.
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+*/
+
+%require-types
+%enable-all-warnings
+%new-style
+%strict-args
+
+module ParamValidator {
+    version = "0.1";
+    desc    = "ParamValidator";
+    author  = "Ondrej Musil <ondrej.musil@qoretechnologies.com>";
+    url     = "https://github.com/qorelanguage/qls";
+}
+
+%requires ./ErrorResponse.qm
+
+public class ParamValidator {
+    #! Validates InitializeParams.
+    public static *string initializeParams(hash request) {
+        if (!request.params.hasKey("processId"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'processId' is missing");
+        int tc = request.params.processId.typeCode();
+        if (tc != NT_INT && tc != NT_NOTHING)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'processId' has invalid type: " + request.params.processId.type());
+
+        if (request.params.hasKey("rootPath")) {
+            tc = request.params.rootPath.typeCode();
+            if (tc != NT_STRING && tc != NT_NOTHING)
+                return ErrorResponse::invalidRequest(request,
+                    "required attribute 'rootPath' has invalid type: " + request.params.rootPath.type());
+        }
+
+        # should be required but VSCode sometimes doesn't send it
+        if (request.params.hasKey("rootUri")) {
+            tc = request.params.rootUri.typeCode();
+            if (tc != NT_STRING && tc != NT_NOTHING)
+                return ErrorResponse::invalidRequest(request,
+                    "required attribute 'rootUri' has invalid type: " + request.params.rootUri.type());
+        }
+
+        # ignore 'initializationOptions'
+        
+        if (!request.params.hasKey("capabilities"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'capabilities' is missing");
+        if (request.params.capabilities.typeCode() != NT_HASH)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'capabilities' has invalid type: " + request.params.capabilities.type());
+
+        # ignore 'trace'
+
+        return NOTHING;
+    }
+
+    #! Validates TextDocumentIdentifier.
+    public static *string textDocumentIdentifier(hash request) {
+        if (!request.params.hasKey("textDocument"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument' is missing");
+        if (!request.params.textDocument.hasKey("uri"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument.uri' is missing");
+        if (request.params.textDocument.uri.typeCode() != NT_STRING)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'textDocument.uri' has invalid type: " + request.params.textDocument.uri.type());
+        return NOTHING;
+    }
+
+    #! Validates TextDocumentItem.
+    public static *string textDocumentItem(hash request) {
+        *string ret = ParamValidator::textDocumentIdentifier(request);
+        if (ret)
+            return ret;
+
+        if (!request.params.textDocument.hasKey("languageId"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument.languageId' is missing");
+        if (request.params.textDocument.languageId.typeCode() != NT_STRING)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'textDocument.languageId' has invalid type: " + request.params.textDocument.languageId.type());
+
+        if (!request.params.textDocument.hasKey("version"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument.version' is missing");
+        if (request.params.textDocument.version.typeCode() != NT_INT)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'textDocument.version' has invalid type: " + request.params.textDocument.version.type());
+
+        if (!request.params.textDocument.hasKey("text"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument.text' is missing");
+        if (request.params.textDocument.text.typeCode() != NT_STRING)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'textDocument.text' has invalid type: " + request.params.textDocument.text.type());
+
+        return NOTHING;
+    }
+
+    #! Validates VersionedTextDocumentIdentifier.
+    public static *string versionedTextDocumentIdentifier(hash request) {
+        *string ret = ParamValidator::textDocumentIdentifier(request);
+        if (ret)
+            return ret;
+
+        if (!request.params.textDocument.hasKey("version"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'textDocument.version' is missing");
+        if (request.params.textDocument.version.typeCode() != NT_INT)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'textDocument.version' has invalid type: " + request.params.textDocument.version.type());
+        return NOTHING;
+    }
+
+    #! Validates TextDocumentPositionParams.
+    public static *string textDocumentPositionParams(hash request) {
+        *string ret = ParamValidator::textDocumentIdentifier(request);
+        if (ret)
+            return ret;
+
+        if (!request.params.hasKey("position"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'position' is missing");
+        if (!request.params.position.hasKey("line"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'position.line' is missing");
+        if (!request.params.position.hasKey("character"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'position.character' is missing");
+
+        if (request.params.position.line.typeCode() != NT_INT)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'position.line' has wrong type: " + request.params.position.line.type());
+        if (request.params.position.character.typeCode() != NT_INT)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'position.character' has invalid type: " + request.params.position.character.type());
+
+        return NOTHING;
+    }
+
+    #! Validates ReferenceParams.
+    public static *string referenceParams(hash request) {
+        *string ret = ParamValidator::textDocumentPositionParams(request);
+        if (ret)
+            return ret;
+
+        if (!request.params.hasKey("context"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'context' is missing");
+        if (!request.params.context.hasKey("includeDeclaration"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'context.includeDeclaration' is missing");
+        if (request.params.context.includeDeclaration.typeCode() != NT_BOOLEAN)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'context.includeDeclaration' has invalid type: " + request.params.context.includeDeclaration.type());
+
+        return NOTHING;
+    }
+
+    #! Validate WorkspaceSymbolParams.
+    public static *string workspaceSymbolParams(hash request) {
+        if (!request.params.hasKey("query"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'query' is missing");
+        if (request.params.query.typeCode() != NT_STRING)
+            return ErrorResponse::invalidRequest(request,
+                "required attribute 'query' has invalid type: " + request.params.query.type());
+        return NOTHING;
+    }
+}

@@ -41,6 +41,7 @@
 %requires ./qlib/Files.qm
 %requires ./qlib/Messenger.qm
 %requires ./qlib/Notification.qm
+%requires ./qlib/ParamValidator.qm
 %requires ./qlib/SymbolInfoKinds.qm
 
 %include ./qlib/ServerCapabilities.q
@@ -58,6 +59,12 @@ class QLS {
     private {
         #! LSP header and content parts delimiter
         const LSP_PART_DELIMITER = "\r\n";
+
+        #! MIN log level
+        const LOGLEVEL_MIN = 0;
+
+        #! MAX log level
+        const LOGLEVEL_MAX = 2;
 
         #! Whether QLS has been initialized ("initialize" method called).
         bool initialized = False;
@@ -360,15 +367,22 @@ class QLS {
     private:internal *string meth_initialize(hash request) {
         log(0, "initialize request received: %N", request);
         jsonRpcVer = request.jsonrpc;
-        reference initParams = \request.params;
+
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::initializeParams(request);
+        if (validation)
+            return validation;
 
         # parse/save initialization params
-        parentProcessId = initParams.processId;
-        clientCapabilities = initParams.capabilities;
-        if (initParams{"rootUri"})
-            rootUri = initParams.rootUri;
-        if (initParams{"rootPath"})
-            rootPath = initParams.rootPath;
+        parentProcessId = request.params.processId;
+        clientCapabilities = request.params.capabilities;
+        if (request.params{"rootUri"})
+            rootUri = request.params.rootUri;
+        if (request.params{"rootPath"})
+            rootPath = request.params.rootPath;
         if (!rootPath && rootUri)
             rootPath = parse_url(rootUri).path;
         if (!rootUri && rootPath)
@@ -430,10 +444,12 @@ class QLS {
     private:internal *string meth_ws_didChangeConfiguration(hash request) {
         clientConfig = request.params.settings;
         log(0, "changed configuration received: %N", clientConfig);
+
         logging = clientConfig.qore.logging ?? False;
         appendToLog = clientConfig.qore.appendToLog ?? True;
         logVerbosity = clientConfig.qore.logVerbosity ?? 0;
-        logVerbosity = (logVerbosity < 0) ? 0 : ((logVerbosity > 3) ? 3 : logVerbosity);
+        logVerbosity = (logVerbosity < LOGLEVEL_MIN) ? LOGLEVEL_MIN : ((logVerbosity > LOGLEVEL_MAX) ? LOGLEVEL_MAX : logVerbosity);
+
         if (clientConfig.qore.logFile)
             logFile = clientConfig.qore.logFile;
         else
@@ -465,12 +481,24 @@ class QLS {
 
     #! "workspace/symbol" method handler
     private:internal *string meth_ws_symbol(hash request) {
-        list symbols = ();
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::workspaceSymbolParams(request);
+        if (validation)
+            return validation;
+
+        # get the search query
         string query = request.params.query;
         log(1, "workspace symbols requested; query: '%s'", query);
+
+        # find matching symbols
+        list symbols = ();
         map symbols += $1.findMatchingSymbols(query), documents.iterator();
         map symbols += $1.findMatchingSymbols(query), workspaceDocs.iterator();
         log(1, "found %d workspace symbols for query: '%s'", symbols.size(), query);
+
         return make_jsonrpc_response(jsonRpcVer, request.id, symbols);
     }
 
@@ -486,6 +514,18 @@ class QLS {
 
     #! "textDocument/didOpen" notification method handler
     private:internal *string meth_td_didOpen(hash request) {
+        # validate request
+        if (!request.hasKey("params")) {
+            log(1, "'textDocument/didOpen' request missing required attribute 'params'");
+            return NOTHING;
+        }
+
+        *string validation = ParamValidator::textDocumentItem(request);
+        if (validation) {
+            log(1, "'textDocument/didOpen' request failed validation: " + validation);
+            return NOTHING;
+        }
+
         reference textDoc = \request.params.textDocument;
         *Document doc;
         if (workspaceDocs{textDoc.uri})
@@ -504,7 +544,25 @@ class QLS {
 
     #! "textDocument/didChange" notification method handler
     private:internal *string meth_td_didChange(hash request) {
-        reference textDoc = \request.params.textDocument;
+        # validate request
+        if (!request.hasKey("params")) {
+            log(1, "'textDocument/didChange' request missing required attribute 'params'");
+            return NOTHING;
+        }
+
+        *string validation = ParamValidator::versionedTextDocumentIdentifier(request);
+        if (validation) {
+            log(1, "'textDocument/didChange' request failed validation: " + validation);
+            return NOTHING;
+        }
+
+        hash textDoc = request.params.textDocument;
+        if (!exists documents{textDoc.uri}) {
+            log(1, sprintf("'textDocument/didChange' request attempted to change non-existent or not opened document '%s'",
+                textDoc.uri));
+            return NOTHING;
+        }
+
         reference doc = \documents{textDoc.uri};
         foreach hash change in (request.params.contentChanges) {
             doc.didChange(change);
@@ -538,6 +596,24 @@ class QLS {
 
     #! "textDocument/didClose" notification method handler
     private:internal *string meth_td_didClose(hash request) {
+        # validate request
+        if (!request.hasKey("params")) {
+            log(1, "'textDocument/didClose' request missing required attribute 'params'");
+            return NOTHING;
+        }
+
+        *string validation = ParamValidator::textDocumentIdentifier(request);
+        if (validation) {
+            log(1, "'textDocument/didClose' request failed validation: " + validation);
+            return NOTHING;
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
+            log(1, sprintf("'textDocument/didClose' request attempted to close non-existent or not opened document '%s'",
+                request.params.textDocument.uri));
+            return NOTHING;
+        }
+
         string uri = request.params.textDocument.uri;
         workspaceDocs{uri} = remove documents{uri};
         log(1, "closed text document: %s", uri);
@@ -556,14 +632,27 @@ class QLS {
 
     #! "textDocument/hover" method handler
     private:internal *string meth_td_hover(hash request) {
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::textDocumentPositionParams(request);
+        if (validation)
+            return validation;
+
+        if (!exists documents{request.params.textDocument.uri})
+            return ErrorResponse::nonExistentDocument(request);
+
+        # get the document
         Document doc = documents{request.params.textDocument.uri};
 
+        # find requested symbol in the document
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);
         #stderr.printf("si: %N\n", symbolInfo);
         if (!symbolInfo)
             return make_jsonrpc_response(jsonRpcVer, request.id, doc.hover(request.params.position));
 
-        list symbols = ();
+        # prepare search query
         string query = symbolInfo.name;
         {
             int lastDoubleColon = query.rfind("::");
@@ -572,6 +661,9 @@ class QLS {
             if (query.equalPartial("*"))
                 query = query.substr(1);
         }
+
+        # find matching symbols
+        list symbols = ();
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
@@ -583,6 +675,7 @@ class QLS {
         }
         #stderr.printf("after: %N\n", symbols);
 
+        # prepare results
         hash result = { "range": symbolInfo.range, "contents": list() };
         foreach hash symbol in (symbols) {
             *hash description;
@@ -608,6 +701,18 @@ class QLS {
 
     #! "textDocument/references" method handler
     private:internal *string meth_td_references(hash request) {
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::referenceParams(request);
+        if (validation)
+            return validation;
+
+        if (!exists documents{request.params.textDocument.uri})
+            return ErrorResponse::nonExistentDocument(request);
+
+        # find references
         Document doc = documents{request.params.textDocument.uri};
         *list references = doc.findReferences(request.params.position, request.params.context.includeDeclaration);
         return make_jsonrpc_response(jsonRpcVer, request.id, references ?? list());
@@ -620,6 +725,18 @@ class QLS {
 
     #! "textDocument/documentSymbol" method handler
     private:internal *string meth_td_documentSymbol(hash request) {
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::textDocumentIdentifier(request);
+        if (validation)
+            return validation;
+
+        if (!exists documents{request.params.textDocument.uri})
+            return ErrorResponse::nonExistentDocument(request);
+
+        # find document symbols
         Document doc = documents{request.params.textDocument.uri};
         *list symbols = doc.findSymbols();
         return make_jsonrpc_response(jsonRpcVer, request.id, symbols ?? list());
@@ -642,13 +759,26 @@ class QLS {
 
     #! "textDocument/definition" method handler
     private:internal *string meth_td_definition(hash request) {
+        # validate request
+        if (!request.hasKey("params"))
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+
+        *string validation = ParamValidator::textDocumentPositionParams(request);
+        if (validation)
+            return validation;
+
+        if (!exists documents{request.params.textDocument.uri})
+            return ErrorResponse::nonExistentDocument(request);
+
+        # get the document
         Document doc = documents{request.params.textDocument.uri};
 
+        # find requested symbol in the document
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);
         if (!symbolInfo)
             return make_jsonrpc_response(jsonRpcVer, request.id, list());
 
-        list symbols = ();
+        # prepare search query
         string query = symbolInfo.name;
         {
             int lastDoubleColon = query.rfind("::");
@@ -657,6 +787,9 @@ class QLS {
             if (query.equalPartial("*"))
                 query = query.substr(1);
         }
+
+        # find matching symbols
+        list symbols = ();
         map symbols += $1.findMatchingSymbols(query, True), documents.iterator();
         map symbols += $1.findMatchingSymbols(query, True), workspaceDocs.iterator();
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
@@ -665,6 +798,8 @@ class QLS {
             if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
                 splice symbols, i, 1;
         }
+
+        # prepare results
         list result = map $1.location, symbols;
         return make_jsonrpc_response(jsonRpcVer, request.id, result);
     }
