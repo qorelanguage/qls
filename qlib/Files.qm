@@ -83,7 +83,7 @@ public list sub find_qore_files(string path) {
     if (!d.chdir(path))
         throw "WORKSPACE-PATH-ERROR", sprintf("Cannot open directory: %s", path);
 
-    list ret();
+    list ret = list();
 
     ListIterator it = d.listFiles().iterator();
     while (it.next()) {

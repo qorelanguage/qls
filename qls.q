@@ -198,10 +198,6 @@ class QLS {
             return ErrorResponse::invalidRequest(request, "Missing 'jsonrpc' attribute");
         if (!request.hasKey("method"))
             return ErrorResponse::invalidRequest(request, "Missing 'method' attribute");
-        if (!methodMap.hasKey(request.method))
-            return ErrorResponse::methodNotFound(request);
-        if (!initialized && request.method != "initialize")
-            return ErrorResponse::notInitialized(request);
         return NOTHING;
     }
 
@@ -258,10 +254,10 @@ class QLS {
             hash received = Messenger::receive();
             *string response;
             if (received.error) {
-                response = ErrorResponse::internalError(received.error);
+                response = ErrorResponse::internalError(jsonRpcVer, received.error);
             }
             else if (!received.msg) {
-                response = ErrorResponse::internalError("no message received");
+                response = ErrorResponse::internalError(jsonRpcVer, "no message received");
             }
             else {
                 response = handleRequest(received.msg);
@@ -286,6 +282,18 @@ class QLS {
         *string validation = validateRequest(request);
         if (validation)
             return validation;
+
+        # check that QLS has been initialized
+        if (!initialized && request.method != "initialize")
+            return ErrorResponse::notInitialized(request);
+
+        # check that the method exists
+        if (!methodMap.hasKey(request.method)) {
+            if (request.id)
+                return ErrorResponse::methodNotFound(request);
+            else # it's notification -> ignore
+                return NOTHING;
+        }
 
         # call appropriate method
         *string response = methodMap{request.method}(request);
@@ -376,7 +384,7 @@ class QLS {
             parseStdModules();
         }
         catch (hash ex) {
-            return ErrorResponse::internalError(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
+            return ErrorResponse::internalError(jsonRpcVer, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
 
         # create response

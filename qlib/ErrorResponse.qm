@@ -74,12 +74,12 @@ public class ErrorResponse {
         return make_jsonrpc_error(request.jsonrpc, request.id, err);
     }
 
-    public static string internalError(*string message) {
+    public static string internalError(string jsonrpc, *string message) {
         hash err = {
             "code" : ErrorCodes.InternalError,
             "message" : message ?? "internal error",
         };
-        return make_jsonrpc_error("2.0", NOTHING, err);
+        return make_jsonrpc_error(jsonrpc, NOTHING, err);
     }
 
     public static string invalidParams(hash request, *string message) {
