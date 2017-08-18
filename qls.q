@@ -304,17 +304,7 @@ class QLS {
         }
 
         # find all Qore files in the workspace
-        list qoreFiles;
-        try {
-            qoreFiles = Files::find_qore_files(rootPath);
-        }
-        catch (ex) {
-            if (ex.err == "WORKSPACE-PATH-ERROR")
-                log(0, "ERROR: root path could not be opened!\n");
-            else
-                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
-            return;
-        }
+        list qoreFiles = Files::find_qore_files(rootPath);
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
@@ -334,17 +324,7 @@ class QLS {
 
     private:internal parseStdModules() {
         # find standard Qore modules
-        list moduleFiles;
-        try {
-            moduleFiles = Files::find_std_modules();
-        }
-        catch (ex) {
-            if (ex.err == "WORKSPACE-PATH-ERROR")
-                log(0, "ERROR: standard Qore module path could not be opened!\n");
-            else
-                log(0, "ERROR:" + ex.err + ": " + ex.desc + "\n");
-            return;
-        }
+        list moduleFiles = Files::find_std_modules();
 
         # create a list of file URIs
         moduleFiles = map "file://" + $1, moduleFiles;
@@ -383,11 +363,21 @@ class QLS {
         if (!rootUri && rootPath)
             rootUri = "file://" + rootPath;
 
-        # parse all Qore file in the current workspace
-        parseFilesInWorkspace();
+        try {
+            # parse all Qore files in the current workspace
+            parseFilesInWorkspace();
+        }
+        catch (hash ex) {
+            return ErrorResponse::invalidParams(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
+        }
 
-        # parse standard Qore modules
-        parseStdModules();
+        try {
+            # parse standard Qore modules
+            parseStdModules();
+        }
+        catch (hash ex) {
+            return ErrorResponse::internalError(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
+        }
 
         # create response
         hash result = {
