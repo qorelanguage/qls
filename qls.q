@@ -663,8 +663,9 @@ class QLS {
         #stderr.printf("symbols: %N\n", symbols);
 
         for (int i = symbols.size()-1; i > 0; i--) {
-            if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
-                splice symbols, i, 1;
+            if (SymbolUsageFastMap{string(symbolInfo.usage)})
+                if (!SymbolUsageFastMap{string(symbolInfo.usage)}.contains(symbols[i].kind))
+                    splice symbols, i, 1;
         }
         #stderr.printf("after: %N\n", symbols);
 
@@ -788,8 +789,9 @@ class QLS {
         map symbols += $1.findMatchingSymbols(query, True), stdModuleDocs.iterator();
 
         for (int i = symbols.size()-1; i > 0; i--) {
-            if (!SymbolUsageFastMap{symbolInfo.usage}.contains(symbols[i].kind))
-                splice symbols, i, 1;
+            if (SymbolUsageFastMap{string(symbolInfo.usage)})
+                if (!SymbolUsageFastMap{string(symbolInfo.usage)}.contains(symbols[i].kind))
+                    splice symbols, i, 1;
         }
 
         # prepare results
