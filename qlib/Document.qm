@@ -118,7 +118,7 @@ public class Document {
         tree = parser.parseFile(filePath);
         if (!tree || parser.getErrorCount()) {
             handleParseErrors();
-            stderr.printf(parseError);
+            #stderr.printf(parseError);
         }
     }
 
@@ -128,7 +128,7 @@ public class Document {
         tree = parser.parseString(text);
         if (!tree || parser.getErrorCount()) {
             handleParseErrors();
-            stderr.printf(parseError);
+            #stderr.printf(parseError);
         }
     }
 
