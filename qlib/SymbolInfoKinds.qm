@@ -128,7 +128,7 @@ public const SymbolUsageStringMap = {
     "FuncDeclName": (ASTSymbolKind.Function, ASTSymbolKind.Method, ASTSymbolKind.Constructor),
     "FuncReturnType": (ASTSymbolKind.Class,),
     "NamespaceDeclName": (ASTSymbolKind.Namespace,),
-    "SuperclassDeclName": (ASTSymbolKind.Class),
+    "SuperclassDeclName": (ASTSymbolKind.Class,),
     "VarDeclName": (ASTSymbolKind.Variable,),
     "VarDeclTypeName": (ASTSymbolKind.Class,),
     "HashDeclName": (ASTSymbolKind.Interface, ASTSymbolKind.Class),
