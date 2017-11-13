@@ -125,6 +125,9 @@ class QLS {
 
         #! Standard Qore modules
         hash stdModuleDocs;
+
+        #! URIs of ignored documents
+        hash ignoredUris;
     }
 
     constructor() {
@@ -260,10 +263,12 @@ class QLS {
                 response = ErrorResponse::internalError(jsonRpcVer, "no message received");
             }
             else {
+                #log(0, "recv: %N\n", received.msg);
                 response = handleRequest(received.msg);
             }
 
             # send back response if any
+            #log(0, "resp: %N\n", response);
             if (response)
                 Messenger::send(response);
         }
@@ -521,17 +526,28 @@ class QLS {
 
         reference textDoc = \request.params.textDocument;
         *Document doc;
-        if (workspaceDocs{textDoc.uri})
+        if (workspaceDocs{textDoc.uri}) {
             doc = remove workspaceDocs{textDoc.uri};
-        else
-            doc = new Document(textDoc.uri, textDoc.text, textDoc.languageId, textDoc.version);
-        documents{textDoc.uri} = doc;
-        log(1, "opened text document: %s", textDoc.uri);
-
-        if (doc.getParseErrorCount() > 0) {
-            *list diagnostics = doc.getDiagnostics();
-            return Notification::diagnostics(jsonRpcVer, textDoc.uri, diagnostics);
         }
+        else {
+            # ignore non-local files
+            if (textDoc.uri =~ /^file:\//)
+                doc = new Document(textDoc.uri, textDoc.text, textDoc.languageId, textDoc.version);
+            else {
+                ignoredUris{textDoc.uri} = True;
+                log(1, "added URI to ignored: '%s'", textDoc.uri);
+            }
+        }
+        if (doc != NOTHING) {
+            documents{textDoc.uri} = doc;
+            log(1, "opened text document: '%s'", textDoc.uri);
+
+            if (doc.getParseErrorCount() > 0) {
+                *list diagnostics = doc.getDiagnostics();
+                return Notification::diagnostics(jsonRpcVer, textDoc.uri, diagnostics);
+            }
+        }
+
         return Notification::diagnostics(jsonRpcVer, textDoc.uri);
     }
 
@@ -550,6 +566,10 @@ class QLS {
         }
 
         hash textDoc = request.params.textDocument;
+        if (ignoredUris{textDoc.uri}) {
+            log(2, sprintf("'textDocument/didChange' request for ignored URI '%s'", textDoc.uri));
+            return NOTHING;
+        }
         if (!exists documents{textDoc.uri}) {
             log(1, sprintf("'textDocument/didChange' request attempted to change non-existent or not opened document '%s'",
                 textDoc.uri));
@@ -561,7 +581,7 @@ class QLS {
             doc.didChange(change);
         }
         doc.changeVersion(textDoc.version);
-        log(1, "text document changed: %s", textDoc.uri);
+        log(1, "text document changed: '%s'", textDoc.uri);
 
         if (doc.getParseErrorCount() > 0) {
             *list diagnostics = doc.getDiagnostics();
@@ -601,6 +621,12 @@ class QLS {
             return NOTHING;
         }
 
+        if (ignoredUris{request.params.textDocument.uri}) {
+            log(2, sprintf("'textDocument/didClose' request for ignored URI '%s'",
+                request.params.textDocument.uri));
+            return NOTHING;
+        }
+
         if (!exists documents{request.params.textDocument.uri}) {
             log(1, sprintf("'textDocument/didClose' request attempted to close non-existent or not opened document '%s'",
                 request.params.textDocument.uri));
@@ -609,7 +635,7 @@ class QLS {
 
         string uri = request.params.textDocument.uri;
         workspaceDocs{uri} = remove documents{uri};
-        log(1, "closed text document: %s", uri);
+        log(1, "closed text document: '%s'", uri);
         return NOTHING;
     }
 
@@ -633,8 +659,15 @@ class QLS {
         if (validation)
             return validation;
 
-        if (!exists documents{request.params.textDocument.uri})
+        if (ignoredUris{request.params.textDocument.uri}) {
+            log(2, sprintf("'textDocument/hover' request for ignored URI '%s'",
+                request.params.textDocument.uri));
+            return make_jsonrpc_response(jsonRpcVer, request.id, {});
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
             return ErrorResponse::nonExistentDocument(request);
+        }
 
         # get the document
         Document doc = documents{request.params.textDocument.uri};
@@ -704,8 +737,15 @@ class QLS {
         if (validation)
             return validation;
 
-        if (!exists documents{request.params.textDocument.uri})
+        if (ignoredUris{request.params.textDocument.uri}) {
+            log(2, sprintf("'textDocument/references' request for ignored URI '%s'",
+                request.params.textDocument.uri));
+            return make_jsonrpc_response(jsonRpcVer, request.id, list());
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
             return ErrorResponse::nonExistentDocument(request);
+        }
 
         # find references
         Document doc = documents{request.params.textDocument.uri};
@@ -728,8 +768,15 @@ class QLS {
         if (validation)
             return validation;
 
-        if (!exists documents{request.params.textDocument.uri})
+        if (ignoredUris{request.params.textDocument.uri}) {
+            log(2, sprintf("'textDocument/documentSymbol' request for ignored URI '%s'",
+                request.params.textDocument.uri));
+            return make_jsonrpc_response(jsonRpcVer, request.id, list());
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
             return ErrorResponse::nonExistentDocument(request);
+        }
 
         # find document symbols
         Document doc = documents{request.params.textDocument.uri};
@@ -762,8 +809,15 @@ class QLS {
         if (validation)
             return validation;
 
-        if (!exists documents{request.params.textDocument.uri})
+        if (ignoredUris{request.params.textDocument.uri}) {
+            log(2, sprintf("'textDocument/definition' request for ignored URI '%s'",
+                request.params.textDocument.uri));
+            return make_jsonrpc_response(jsonRpcVer, request.id, list());
+        }
+
+        if (!exists documents{request.params.textDocument.uri}) {
             return ErrorResponse::nonExistentDocument(request);
+        }
 
         # get the document
         Document doc = documents{request.params.textDocument.uri};
