@@ -27,7 +27,7 @@
 %strict-args
 
 module SymbolInfoKinds {
-    version = "0.1";
+    version = "0.2";
     desc    = "SymbolInfoKinds";
     author  = "Ondrej Musil <ondrej.musil@qoretechnologies.com>";
     url     = "https://github.com/qorelanguage/qls";
@@ -97,6 +97,9 @@ public const ASTSymbolUsageKind = {
     "TernaryTrue": 218,
     "TernaryFalse": 219,
     "Unary": 220,
+    "RangeLeft": 221,
+    "RangeRight": 222,
+    "HashdeclHashHashdecl": 223,
 
     # Statements.
     "ContextStmtName": 300,
@@ -156,6 +159,9 @@ public const SymbolUsageStringMap = {
     "TernaryTrue": (ASTSymbolKind.Variable, ASTSymbolKind.Constant),
     "TernaryFalse": (ASTSymbolKind.Variable, ASTSymbolKind.Constant),
     "Unary": (ASTSymbolKind.Variable, ASTSymbolKind.Constant, ASTSymbolKind.Function, ASTSymbolKind.Method, ASTSymbolKind.Constructor),
+    "RangeLeft": list(),
+    "RangeRight": list(),
+    "HashdeclHashHashdecl": (ASTSymbolKind.Interface,),
 
     # Statements.
     "ContextStmtName": (ASTSymbolKind.Variable, ASTSymbolKind.Constant),
