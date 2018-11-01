@@ -76,7 +76,7 @@ class QLS {
         bool shutdown = False;
 
         # Whether the main loop should still run (or QLS should quit).
-        bool running = True; 
+        bool running = True;
 
         # Exit code to use when quitting
         int exitCode = 0;
@@ -87,7 +87,10 @@ class QLS {
         #! JSON-RPC version string (ex. "2.0")
         string jsonRpcVer = "2.0";
 
-        #! Workspace root URI (ex. "file:///home/user/projects/lorem")
+        #! Workspace root URI (ex. "file:///home/user/projects/lorem").
+        /** See Document::getFileUriPrefix()
+            See Document::getFileUri()
+         */
         string rootUri;
 
         #! Workspace root path (ex. "/home/user/projects/lorem")
@@ -340,7 +343,7 @@ class QLS {
         list moduleFiles = Files::find_std_modules();
 
         # create a list of file URIs
-        moduleFiles = map "file://" + $1, moduleFiles;
+        moduleFiles = map Document::getFileUri($1), moduleFiles;
 
         # parse everything
         map stdModuleDocs{$1} = new Document($1), moduleFiles;
@@ -374,7 +377,7 @@ class QLS {
         if (!rootPath && rootUri)
             rootPath = parse_url(rootUri).path;
         if (!rootUri && rootPath)
-            rootUri = "file://" + rootPath;
+            rootUri = Document::getFileUri(rootPath);
 
         try {
             # parse all Qore files in the current workspace

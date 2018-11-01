@@ -87,6 +87,31 @@ public class Document {
         parseFile();
     }
 
+    /** Do not use "file://" prefix directly. Always
+        use this function because of:
+        https://github.com/qorelanguage/qore-vscode/issues/7
+        https://blogs.msdn.microsoft.com/ie/2006/12/06/file-uris-in-windows/
+     */
+    static string getFileUriPrefix() {
+        return Qore::Platform.Windows ? "file:///" : "file://";
+    }
+
+    /** Create a URI encoded string from a raw path.
+        @raw_path a string with a file path
+
+        The final path is:
+            - prefixed with Document::getFileUriPrefix() if required
+            - encoded with Qore::encode_url()
+     */
+    static string getFileUri(string raw_path) {
+        string ret;
+        if (raw_path !~ /^file:\/\//) {
+            ret += Document::getFileUriPrefix();
+        }
+        ret += Qore::encode_url(raw_path);
+        return ret;
+    }
+
     private:internal parseInit() {
         delete parseError;
         delete tree;
@@ -114,7 +139,8 @@ public class Document {
     #! Parse document from a file.
     private:internal parseFile() {
         parseInit();
-        string filePath = uri.substr(7); # trim "file://"
+        string filePath = uri.substr(Document::getFileUriPrefix().size()); # trim "file://" see Document::getFileUriPrefix()
+        filePath = Qore::decode_url(filePath);
         tree = parser.parseFile(filePath);
         if (!tree || parser.getErrorCount()) {
             handleParseErrors();
@@ -156,7 +182,7 @@ public class Document {
         # Re-parse the document.
         parseText();
     }
-    
+
     changeVersion(int n_version) {
         version = n_version;
     }
