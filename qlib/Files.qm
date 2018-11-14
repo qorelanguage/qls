@@ -38,28 +38,32 @@ public namespace Files
 
 public const QORE_EXTENSIONS = (
     # Qore file extensions
-    "q"         : "Qore script",
-    "ql"        : "Qore library",
-    "qc"        : "Qore class",
-    "qm"        : "Qore user module",
-    "qtest"     : "Qore unit test",
+    "\.q$"                : "Qore script",
+    "\.ql$"               : "Qore library",
+    "\.qc$"               : "Qore class",
+    "\.qm$"               : "Qore user module",
+    "\.qtest$"            : "Qore unit test",
 
     # Qorus file extensions
-    "qwf"       : "Qorus workflow definition",
-    "qsd"       : "Qorus service",
-    "qfd"       : "Qorus functions",
-    "qjob"      : "Qorus job",
-    "qconst"    : "Qorus constant",
-    #"qmapper"  : "Qorus mapper",
-    "qscript"   : "Qorus deployment script",
-    "qsm"       : "Qorus schema module",
-    #"qvmap"    : "Qorus value map"
+    "\.qwf$"              : "Qorus workflow definition",
+    "\.qsd$"              : "Qorus service",
+    "\.qfd$"              : "Qorus functions",
+    "(?<!\.java8)\.qjob$" : "Qorus job",
+    "\.qconst$"           : "Qorus constant",
+    #"\.qmapper$"          : "Qorus mapper",
+    "\.qscript$"          : "Qorus deployment script",
+    "\.qsm$"              : "Qorus schema module",
+    #"\.qvmap$"            : "Qorus value map"
 );
 
 public bool sub is_valid_qore_file(string path) {
-    *string ext = (path =~ x/\.([a-z0-9]+)$/i)[0];
-    if (ext && QORE_EXTENSIONS.hasKey(ext))
-        return True;
+    *string ext = (path =~ x/((?:\.[a-z0-9]+)+)$/i)[0];
+    if (ext) {
+        foreach hash qe in (QORE_EXTENSIONS.pairIterator()) {
+            if (ext.regex(qe.key))
+                return True;
+        }
+    }
 
     # here we are trying to simulate magic as specified in Freedesktop's
     # Shared MIME-info Database specification.
