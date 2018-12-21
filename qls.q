@@ -117,6 +117,9 @@ class QLS {
         #! Log file
         string logFile;
 
+        #! Additional messages that need to be sent to VS Code.
+        list messagesToSend = list();
+
         #! Map of JSON-RPC methods
         hash methodMap;
 
@@ -274,6 +277,15 @@ class QLS {
             #log(0, "resp: %N\n", response);
             if (response)
                 Messenger::send(response);
+
+            # send additional messages
+            if (initialized && clientInitialized) {
+                while (messagesToSend.size()) {
+                    list msg = extract messagesToSend, 0, 1;
+                    foreach auto m in (msg)
+                        Messenger::send(m);
+                }
+            }
         }
 
         return exitCode;
@@ -320,7 +332,31 @@ class QLS {
         }
 
         # find all Qore files in the workspace
-        list qoreFiles = Files::find_qore_files(rootPath);
+        list qoreFiles;
+        try {
+            qoreFiles = Files::find_qore_files(rootPath);
+        }
+        catch (hash ex) {
+            if (ex.err == "DIR-READ-FAILURE") {
+                log(0, "WARNING: root path scanning failed - %s: %s\n", ex.err, ex.desc);
+                push messagesToSend, Notification::showMessage(
+                    jsonRpcVer,
+                    MessageType.Warning,
+                    "An error happened during reading of workspace root, therefore Qore IntelliSense features might not work fully."
+                    " Please check that the workspace does not contain any invalid symlinks or other invalid files or directories.");
+                return;
+            }
+            if (ex.err == "WORKSPACE-PATH-ERROR") {
+                log(0, "WARNING: could not open root path - %s: %s\n", ex.err, ex.desc);
+                push messagesToSend, Notification::showMessage(
+                    jsonRpcVer,
+                    MessageType.Warning,
+                    "Could not open workspace root. Some Qore IntelliSense features might not work fully."
+                    " Please check that the workspace does not contain any invalid symlinks or other invalid files or directories.");
+                return;
+            }
+            rethrow;
+        }
 
         # create a list of file URIs
         int rootPathSize = rootPath.size();
@@ -340,7 +376,21 @@ class QLS {
 
     private:internal parseStdModules() {
         # find standard Qore modules
-        list moduleFiles = Files::find_std_modules();
+        list moduleFiles;
+        try {
+            moduleFiles = Files::find_std_modules();
+        }
+        catch (hash ex) {
+            if (ex.err == "DIR-READ-FAILURE") {
+                log(0, "WARNING: std module scanning failed - %s: %s\n", ex.err, ex.desc);
+                push messagesToSend, Notification::showMessage(
+                    jsonRpcVer,
+                    MessageType.Warning,
+                    "An error happened during reading of standard Qore module files, therefore Qore IntelliSense features might not work fully.");
+                return;
+            }
+            rethrow;
+        }
 
         # create a list of file URIs
         moduleFiles = map Document::getFileUri($1), moduleFiles;
