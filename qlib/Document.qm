@@ -269,6 +269,10 @@ public class Document {
         return NOTHING;
     }
 
+    *list getNodesInfo() {
+        return tree ? tree.getNodesInfo() : NOTHING;
+    }
+
     #! Find matching symbols.
     /**
         @param query search query

@@ -833,8 +833,16 @@ class QLS {
 
         # find document symbols
         Document doc = documents{request.params.textDocument.uri};
-        *list symbols = doc.findSymbols();
-        return make_jsonrpc_response(jsonRpcVer, request.id, symbols ?? list());
+
+        *list ret_val;
+        switch (request.params.ret_type) {
+            case 'node_info':
+                ret_val = doc.getNodesInfo();
+                break;
+            default:
+                ret_val = doc.findSymbols();
+        }
+        return make_jsonrpc_response(jsonRpcVer, request.id, ret_val ?? list());
     }
 
     #! "textDocument/formatting" method handler
