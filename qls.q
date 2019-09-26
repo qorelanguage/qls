@@ -950,7 +950,7 @@ class QLS {
         Document doc = documents{request.params.textDocument.uri};
 
         *list ret;
-        switch (request.params.ret_type) {
+        switch (request.params.retType) {
             case 'node_info':
                 ret = doc.getNodesInfo();
                 break;
