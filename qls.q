@@ -257,7 +257,121 @@ class QLS {
     # Main logic
     #=================
 
+    testRun() {
+        jsonRpcVer = "2.0";
+        int id = 1;
+        meth_initialize({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "initialize",
+            "params": {
+                "processId": 123,
+                "rootPath": `pwd`,
+                "capabilities": {}
+            },
+        });
+        meth_initialized({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "initialized",
+        });
+
+        meth_ws_didChangeConfiguration({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "workspace/didChangeConfiguration",
+            "params": {
+                "settings": {
+                    "qore": {
+                        "executable": "/home/omusil/.qore/develop/bin/qore",
+                        "useQLS": True,
+                        "logging": False,
+                        "logFile": NOTHING,
+                        "logVerbosity": 0,
+                        "appendToLog": False,
+                        "debugAdapter": NOTHING,
+                    }
+                }
+            },
+        });
+
+        string text;
+        {
+            ReadOnlyFile f("/home/omusil/random/qlstest/cip.q");
+            text = f.read(1000000);
+            f.close();
+        }
+
+        meth_td_didOpen({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": "file:///home/omusil/random/qlstest/dbgtest.q",
+                    "languageId": "qore",
+                    "version": 1,
+                    "text": text
+                }
+            },
+        });
+
+        meth_td_documentSymbol({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "textDocument/documentSymbol",
+            "params": {
+                "textDocument": {
+                    "uri": "file:///home/omusil/random/qlstest/dbgtest.q",
+                }
+            },
+        });
+
+        meth_td_hover({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {
+                    "uri": "file:///home/omusil/random/qlstest/dbgtest.q",
+                },
+                "position": {
+                    "line": 14,
+                    "character": 12,
+                }
+            },
+        });
+
+        meth_td_hover({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+            "method": "textDocument/hover",
+            "params": {
+                "textDocument": {
+                    "uri": "file:///home/omusil/random/qlstest/dbgtest.q",
+                },
+                "position": {
+                    "line": 20,
+                    "character": 11,
+                }
+            },
+        });
+
+        meth_shutdown({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+        });
+
+        meth_exit({
+            "jsonrpc": jsonRpcVer,
+            "id": id++,
+        });
+    }
+
     int main() {
+        #testRun();
+        #return 0;
+
         while (running) {
             # read JSON-RPC request
             hash received = Messenger::receive();
@@ -294,6 +408,7 @@ class QLS {
     *string handleRequest(string msg) {
         # parse the request
         any request = parse_json(msg);
+        #stderr.printf("req: %N\n", request);
 
         # validate request
         if (request.typeCode() != NT_HASH)
@@ -834,15 +949,15 @@ class QLS {
         # find document symbols
         Document doc = documents{request.params.textDocument.uri};
 
-        *list ret_val;
+        *list ret;
         switch (request.params.ret_type) {
             case 'node_info':
-                ret_val = doc.getNodesInfo();
+                ret = doc.getNodesInfo();
                 break;
             default:
-                ret_val = doc.findSymbols();
+                ret = doc.findSymbols();
         }
-        return make_jsonrpc_response(jsonRpcVer, request.id, ret_val ?? list());
+        return make_jsonrpc_response(jsonRpcVer, request.id, ret ?? list());
     }
 
     #! "textDocument/formatting" method handler
