@@ -144,10 +144,11 @@ class QLS {
     }
 
     private:internal string getDefaultLogFilePath() {
-        if (PlatformOS == "Windows")
+        if (PlatformOS == "Windows") {
             return getenv("APPDATA") + DirSep + "QLS" + DirSep + "qls.log";
-        else
+        } else {
             return getenv("HOME") + DirSep + ".qls.log";
+        }
     }
 
     private:internal prepareLogFile(string logFilePath, bool force = False) {
@@ -203,10 +204,12 @@ class QLS {
     }
 
     private:internal *string validateRequest(hash request) {
-        if (!request.hasKey("jsonrpc"))
+        if (!request.hasKey("jsonrpc")) {
             return ErrorResponse::invalidRequest(request, "Missing 'jsonrpc' attribute");
-        if (!request.hasKey("method"))
+        }
+        if (!request.hasKey("method")) {
             return ErrorResponse::invalidRequest(request, "Missing 'method' attribute");
+        }
         return NOTHING;
     }
 
@@ -223,7 +226,6 @@ class QLS {
             "workspace/didChangeConfiguration": \meth_ws_didChangeConfiguration(),
             "workspace/didChangeWatchedFiles": \meth_ws_didChangeWatchedFiles(),
             "workspace/symbol": \meth_ws_symbol(),
-            "workspace/executeCommand": \meth_ws_executeCommand(),
 
             # Document methods
             "textDocument/didOpen": \meth_td_didOpen(),
@@ -232,23 +234,10 @@ class QLS {
             "textDocument/willSaveWaitUntil": \meth_td_willSaveWaitUntil(),
             "textDocument/didSave": \meth_td_didSave(),
             "textDocument/didClose": \meth_td_didClose(),
-            "textDocument/completion": \meth_td_completion(),
-            "completionItem/resolve": \meth_completionItem_resolve(),
             "textDocument/hover": \meth_td_hover(),
-            "textDocument/signatureHelp": \meth_td_signatureHelp(),
             "textDocument/references": \meth_td_references(),
-            "textDocument/documentHighlight": \meth_td_documentHighlight(),
             "textDocument/documentSymbol": \meth_td_documentSymbol(),
-            "textDocument/formatting": \meth_td_formatting(),
-            "textDocument/rangeFormatting": \meth_td_rangeFormatting(),
-            "textDocument/onTypeFormatting": \meth_td_onTypeFormatting(),
             "textDocument/definition": \meth_td_definition(),
-            "textDocument/codeAction": \meth_td_codeAction(),
-            "textDocument/codeLens": \meth_td_codeLens(),
-            "codeLens/resolve": \meth_codeLens_resolve(),
-            "textDocument/documentLink": \meth_td_documentLink(),
-            "documentLink/resolve": \meth_documentLink_resolve(),
-            "textDocument/rename": \meth_td_rename(),
         };
     }
 
@@ -375,22 +364,21 @@ class QLS {
         while (running) {
             # read JSON-RPC request
             hash received = Messenger::receive();
-            *string response;
+            list responses;
             if (received.error) {
-                response = ErrorResponse::internalError(jsonRpcVer, received.error);
-            }
-            else if (!received.msg) {
-                response = ErrorResponse::internalError(jsonRpcVer, "no message received");
-            }
-            else {
+                responses = (ErrorResponse::internalError(jsonRpcVer, received.error),);
+            } else if (!received.msg) {
+                responses = (ErrorResponse::internalError(jsonRpcVer, "no message received"),);
+            } else {
                 #log(0, "recv: %N\n", received.msg);
-                response = handleRequest(received.msg);
+                responses = handleRequest(received.msg);
             }
 
             # send back response if any
             #log(0, "resp: %N\n", response);
-            if (response)
-                Messenger::send(response);
+            if (responses) {
+                map Messenger::send($1), responses, $1.typeCode() == NT_STRING;
+            }
 
             # send additional messages
             if (initialized && clientInitialized) {
@@ -405,34 +393,38 @@ class QLS {
         return exitCode;
     }
 
-    *string handleRequest(string msg) {
+    softlist handleRequest(string msg) {
         # parse the request
         any request = parse_json(msg);
         #stderr.printf("req: %N\n", request);
 
         # validate request
-        if (request.typeCode() != NT_HASH)
+        if (request.typeCode() != NT_HASH) {
             return ErrorResponse::invalidRequest({"received": msg, "jsonrpc": jsonRpcVer}, "Invalid JSON-RPC request");
+        }
 
         *string validation = validateRequest(request);
-        if (validation)
+        if (validation) {
             return validation;
+        }
 
         # check that QLS has been initialized
-        if (!initialized && request.method != "initialize")
+        if (!initialized && request.method != "initialize") {
             return ErrorResponse::notInitialized(request);
+        }
 
         # check that the method exists
         if (!methodMap.hasKey(request.method)) {
-            if (request.id)
+            if (request.id) {
                 return ErrorResponse::methodNotFound(request);
-            else # it's notification -> ignore
+            } else { # it's notification -> ignore
                 return NOTHING;
+            }
         }
 
         # call appropriate method
-        *string response = methodMap{request.method}(request);
-        return response;
+        softlist responses = methodMap{request.method}(request);
+        return responses;
     }
 
 
@@ -520,43 +512,55 @@ class QLS {
     #=================
 
     #! "initialize" method handler
-    private:internal *string meth_initialize(hash request) {
+    private *string meth_initialize(hash request) {
         log(0, "initialize request received: %N", request);
         jsonRpcVer = request.jsonrpc;
 
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::initializeParams(request);
-        if (validation)
+        }
+        if (request.params.typeCode() != NT_HASH) {
+            return ErrorResponse::invalidRequest(
+                request,
+                sprintf(
+                    "required attribute 'params' has invalid type: %s",
+                    request.params.type()
+                )
+            );
+        }
+        *string validation = ParamValidator::initializeParams(request, request.params);
+        if (validation) {
             return validation;
+        }
 
         # parse/save initialization params
         parentProcessId = request.params.processId;
         clientCapabilities = request.params.capabilities;
-        if (request.params{"rootUri"})
+        if (request.params.rootUri) {
             rootUri = request.params.rootUri;
-        if (request.params{"rootPath"})
+        }
+        if (request.params.rootPath) {
             rootPath = request.params.rootPath;
-        if (!rootPath && rootUri)
+        }
+        if (!rootPath && rootUri) {
             rootPath = parse_url(rootUri).path;
-        if (!rootUri && rootPath)
+        }
+        if (!rootUri && rootPath) {
             rootUri = Document::getFileUri(rootPath);
+        }
 
         try {
             # parse all Qore files in the current workspace
             parseFilesInWorkspace();
-        }
-        catch (hash ex) {
+        } catch (hash ex) {
             return ErrorResponse::invalidParams(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
 
         try {
             # parse standard Qore modules
             parseStdModules();
-        }
-        catch (hash ex) {
+        } catch (hash ex) {
             return ErrorResponse::internalError(jsonRpcVer, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
 
@@ -572,31 +576,32 @@ class QLS {
     }
 
     #! "initialized" notification method handler
-    private:internal *string meth_initialized(hash request) {
+    private *string meth_initialized(hash request) {
         clientInitialized = True;
         log(0, "client initialized!");
         return NOTHING;
     }
 
     #! "shutdown" method handler
-    private:internal *string meth_shutdown(hash request) {
+    private *string meth_shutdown(hash request) {
         shutdown = True;
         log(0, "shutdown request received");
         return make_jsonrpc_response(jsonRpcVer, request.id, {});
     }
 
     #! "exit" notification method handler
-    private:internal *string meth_exit(hash request) {
+    private *string meth_exit(hash request) {
         log(0, "exit request received");
-        if (!shutdown)
+        if (!shutdown) {
             exitCode = 1;
+        }
         log(0, "exitCode: %d", exitCode);
         running = False;
         return NOTHING;
     }
 
     #! "$/cancelRequest" notification method handler
-    private:internal *string meth_cancelRequest(hash request) {
+    private *string meth_cancelRequest(hash request) {
         # ignore for now
         return NOTHING;
     }
@@ -607,7 +612,16 @@ class QLS {
     #===================
 
     #! "workspace/didChangeConfiguration" notification method handler
-    private:internal *string meth_ws_didChangeConfiguration(hash request) {
+    private *string meth_ws_didChangeConfiguration(hash request) {
+        # validate request
+        if (!request.hasKey("params")) {
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+        }
+        *string validation = ParamValidator::didChangeConfigParams(request, request.params);
+        if (validation) {
+            return validation;
+        }
+
         clientConfig = request.params.settings;
         log(0, "changed configuration received: %N", clientConfig);
 
@@ -616,10 +630,12 @@ class QLS {
         logVerbosity = clientConfig.qore.logVerbosity ?? 0;
         logVerbosity = (logVerbosity < LOGLEVEL_MIN) ? LOGLEVEL_MIN : ((logVerbosity > LOGLEVEL_MAX) ? LOGLEVEL_MAX : logVerbosity);
 
-        if (clientConfig.qore.logFile)
+        if ((clientConfig.qore.logFile != NOTHING) &&
+            (clientConfig.qore.logFile.typeCode() == NT_STRING)) {
             logFile = clientConfig.qore.logFile;
-        else
+        } else {
             logFile = getDefaultLogFilePath();
+        }
         prepareLogFile(logFile);
 
         if (logging && !canOpenLog)
@@ -629,7 +645,17 @@ class QLS {
     }
 
     #! "workspace/didChangeWatchedFiles" notification method handler
-    private:internal *string meth_ws_didChangeWatchedFiles(hash request) {
+    private *string meth_ws_didChangeWatchedFiles(hash request) { # TODO add validation
+        # validate request
+        if (!request.hasKey("params")) {
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
+        }
+        *string validation = ParamValidator::didChangeWatchedFilesParams(request, request.params);
+        if (validation) {
+            return validation;
+        }
+
+        # handle changes
         list changes = request.params.changes;
         foreach hash change in (changes) {
             switch (change.type) {
@@ -646,14 +672,15 @@ class QLS {
     }
 
     #! "workspace/symbol" method handler
-    private:internal *string meth_ws_symbol(hash request) {
+    private *string meth_ws_symbol(hash request) {
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::workspaceSymbolParams(request);
-        if (validation)
+        }
+        *string validation = ParamValidator::workspaceSymbolParams(request, request.params);
+        if (validation) {
             return validation;
+        }
 
         # get the search query
         string query = request.params.query;
@@ -668,71 +695,85 @@ class QLS {
         return make_jsonrpc_response(jsonRpcVer, request.id, symbols);
     }
 
-    #! "workspace/executeCommand" method handler
-    private:internal *string meth_ws_executeCommand(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
 
     #==================
     # Document methods
     #==================
 
     #! "textDocument/didOpen" notification method handler
-    private:internal *string meth_td_didOpen(hash request) {
+    private softlist meth_td_didOpen(hash request) {
         # validate request
         if (!request.hasKey("params")) {
             log(1, "'textDocument/didOpen' request missing required attribute 'params'");
             return NOTHING;
         }
 
-        *string validation = ParamValidator::textDocumentItem(request);
-        if (validation) {
-            log(1, "'textDocument/didOpen' request failed validation: " + validation);
-            return NOTHING;
-        }
-
-        reference textDoc = \request.params.textDocument;
-        *Document doc;
-        if (workspaceDocs{textDoc.uri}) {
-            doc = remove workspaceDocs{textDoc.uri};
-        }
-        else {
-            # ignore non-local files
-            if (textDoc.uri =~ /^file:\//)
-                doc = new Document(textDoc.uri, textDoc.text, textDoc.languageId, textDoc.version);
-            else {
-                ignoredUris{textDoc.uri} = True;
-                log(1, "added URI to ignored: '%s'", textDoc.uri);
+        # extract params hashes
+        list paramsList;
+        if (request.params.typeCode() == NT_LIST) {
+            foreach any p in (request.params) {
+                if (p) {
+                    paramsList += p;
+                }
             }
+        } else if (request.params.typeCode() == NT_HASH) {
+            paramsList += request.params;
+        } else {
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is not an array or object");
         }
-        if (doc != NOTHING) {
-            documents{textDoc.uri} = doc;
-            log(1, "opened text document: '%s'", textDoc.uri);
 
-            if (doc.getParseErrorCount() > 0) {
-                *list diagnostics = doc.getDiagnostics();
-                return Notification::diagnostics(jsonRpcVer, textDoc.uri, diagnostics);
+        # go through the params hashes
+        list responses;
+        foreach hash params in (paramsList) {
+            *string validation = ParamValidator::textDocumentItem(request, params);
+            if (validation) {
+                log(1, "'textDocument/didOpen' request failed validation: " + validation);
+                continue;
             }
-        }
 
-        return Notification::diagnostics(jsonRpcVer, textDoc.uri);
+            reference textDoc = \params.textDocument;
+            *Document doc;
+            if (workspaceDocs{textDoc.uri}) {
+                doc = remove workspaceDocs{textDoc.uri};
+            } else {
+                # ignore non-local files
+                if (textDoc.uri =~ /^file:\//) {
+                    doc = new Document(textDoc.uri, textDoc.text, textDoc.languageId, textDoc.version);
+                } else {
+                    ignoredUris{textDoc.uri} = True;
+                    log(1, "added URI to ignored: '%s'", textDoc.uri);
+                }
+            }
+            if (doc != NOTHING) {
+                documents{textDoc.uri} = doc;
+                log(1, "opened text document: '%s'", textDoc.uri);
+
+                if (doc.getParseErrorCount() > 0) {
+                    *list diagnostics = doc.getDiagnostics();
+                    responses += Notification::diagnostics(jsonRpcVer, textDoc.uri, diagnostics);
+                    continue;
+                }
+            }
+
+            responses += Notification::diagnostics(jsonRpcVer, textDoc.uri);
+        }
+        return responses;
     }
 
     #! "textDocument/didChange" notification method handler
-    private:internal *string meth_td_didChange(hash request) {
+    private *string meth_td_didChange(hash request) {
         # validate request
         if (!request.hasKey("params")) {
             log(1, "'textDocument/didChange' request missing required attribute 'params'");
             return NOTHING;
         }
-
-        *string validation = ParamValidator::versionedTextDocumentIdentifier(request);
+        *string validation = ParamValidator::versionedTextDocumentIdentifier(request, request.params);
         if (validation) {
             log(1, "'textDocument/didChange' request failed validation: " + validation);
             return NOTHING;
         }
 
+        # handle changes
         hash textDoc = request.params.textDocument;
         if (ignoredUris{textDoc.uri}) {
             log(2, sprintf("'textDocument/didChange' request for ignored URI '%s'", textDoc.uri));
@@ -759,31 +800,30 @@ class QLS {
     }
 
     #! "textDocument/willSave" notification method handler
-    private:internal *string meth_td_willSave(hash request) {
+    private *string meth_td_willSave(hash request) {
         # ignore for now
         return NOTHING;
     }
 
     #! "textDocument/willSaveWaitUntil" method handler
-    private:internal *string meth_td_willSaveWaitUntil(hash request) {
+    private *string meth_td_willSaveWaitUntil(hash request) {
         return ErrorResponse::invalidRequest(request);
     }
 
     #! "textDocument/didSave" notification method handler
-    private:internal *string meth_td_didSave(hash request) {
+    private *string meth_td_didSave(hash request) {
         # ignore for now
         return NOTHING;
     }
 
     #! "textDocument/didClose" notification method handler
-    private:internal *string meth_td_didClose(hash request) {
+    private *string meth_td_didClose(hash request) {
         # validate request
         if (!request.hasKey("params")) {
             log(1, "'textDocument/didClose' request missing required attribute 'params'");
             return NOTHING;
         }
-
-        *string validation = ParamValidator::textDocumentIdentifier(request);
+        *string validation = ParamValidator::textDocumentIdentifier(request, request.params);
         if (validation) {
             log(1, "'textDocument/didClose' request failed validation: " + validation);
             return NOTHING;
@@ -807,25 +847,16 @@ class QLS {
         return NOTHING;
     }
 
-    #! "textDocument/completion" method handler
-    private:internal *string meth_td_completion(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "completionItem/resolve" method handler
-    private:internal *string meth_completionItem_resolve(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
     #! "textDocument/hover" method handler
-    private:internal *string meth_td_hover(hash request) {
+    private *string meth_td_hover(hash request) {
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::textDocumentPositionParams(request);
-        if (validation)
+        }
+        *string validation = ParamValidator::textDocumentPositionParams(request, request.params);
+        if (validation) {
             return validation;
+        }
 
         if (ignoredUris{request.params.textDocument.uri}) {
             log(2, sprintf("'textDocument/hover' request for ignored URI '%s'",
@@ -843,8 +874,9 @@ class QLS {
         # find requested symbol in the document
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);
         #stderr.printf("si: %N\n", symbolInfo);
-        if (!symbolInfo)
+        if (!symbolInfo) {
             return make_jsonrpc_response(jsonRpcVer, request.id, doc.hover(request.params.position));
+        }
 
         # prepare search query
         string query = symbolInfo.name;
@@ -890,20 +922,16 @@ class QLS {
         return make_jsonrpc_response(jsonRpcVer, request.id, result);
     }
 
-    #! "textDocument/signatureHelp" method handler
-    private:internal *string meth_td_signatureHelp(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
     #! "textDocument/references" method handler
-    private:internal *string meth_td_references(hash request) {
+    private *string meth_td_references(hash request) {
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::referenceParams(request);
-        if (validation)
+        }
+        *string validation = ParamValidator::referenceParams(request, request.params);
+        if (validation) {
             return validation;
+        }
 
         if (ignoredUris{request.params.textDocument.uri}) {
             log(2, sprintf("'textDocument/references' request for ignored URI '%s'",
@@ -921,69 +949,76 @@ class QLS {
         return make_jsonrpc_response(jsonRpcVer, request.id, references ?? list());
     }
 
-    #! "textDocument/documentHighlight" method handler
-    private:internal *string meth_td_documentHighlight(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
     #! "textDocument/documentSymbol" method handler
-    private:internal *string meth_td_documentSymbol(hash request) {
+    private softlist meth_td_documentSymbol(hash request) {
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::textDocumentIdentifier(request);
-        if (validation)
-            return validation;
-
-        if (ignoredUris{request.params.textDocument.uri}) {
-            log(2, sprintf("'textDocument/documentSymbol' request for ignored URI '%s'",
-                request.params.textDocument.uri));
-            return make_jsonrpc_response(jsonRpcVer, request.id, list());
         }
 
-        if (!exists documents{request.params.textDocument.uri}) {
-            return ErrorResponse::nonExistentDocument(request);
+        # extract params hashes from the params key
+        list paramsList;
+        if (request.params.typeCode() == NT_LIST) {
+            foreach any p in (request.params) {
+                if (p && p.typeCode() == NT_HASH) {
+                    paramsList += p;
+                }
+            }
+        } else if (request.params.typeCode() == NT_HASH) {
+            paramsList += request.params;
+        } else {
+            return ErrorResponse::invalidRequest(request, "required attribute 'params' is not an array or object");
         }
 
-        # find document symbols
-        Document doc = documents{request.params.textDocument.uri};
+        # go through the params hashes
+        list responses;
+        foreach hash params in (paramsList) {
+            *string validation = ParamValidator::textDocumentIdentifier(request, params);
+            if (validation) {
+                #stderr.printf("ds req: %N\nparamsList: %N\nparams: %N\nvalidation: %N\n", request, paramsList, params, validation);
+                #throw "VALIDATION-FAIL";
+                return validation;
+            }
 
-        *list ret;
-        switch (request.params.retType) {
-            case 'node_info':
-                ret = doc.getNodesInfo();
-                break;
-            default:
-                ret = doc.findSymbols();
+            if (ignoredUris{params.textDocument.uri}) {
+                log(2, sprintf("'textDocument/documentSymbol' request for ignored URI '%s'",
+                    params.textDocument.uri));
+                responses += make_jsonrpc_response(jsonRpcVer, request.id, list());
+                continue;
+            }
+
+            if (!exists documents{params.textDocument.uri}) {
+                responses += ErrorResponse::nonExistentDocument(request);
+                continue;
+            }
+
+            # find document symbols
+            Document doc = documents{params.textDocument.uri};
+
+            *list ret;
+            switch (params.retType) {
+                case 'node_info':
+                    ret = doc.getNodesInfo();
+                    break;
+                default:
+                    ret = doc.findSymbols();
+            }
+            responses += make_jsonrpc_response(jsonRpcVer, request.id, ret ?? list());
+            continue;
         }
-        return make_jsonrpc_response(jsonRpcVer, request.id, ret ?? list());
-    }
-
-    #! "textDocument/formatting" method handler
-    private:internal *string meth_td_formatting(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "textDocument/rangeFormatting" method handler
-    private:internal *string meth_td_rangeFormatting(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "textDocument/onTypeFormatting" method handler
-    private:internal *string meth_td_onTypeFormatting(hash request) {
-        return ErrorResponse::methodNotFound(request);
+        return responses;
     }
 
     #! "textDocument/definition" method handler
-    private:internal *string meth_td_definition(hash request) {
+    private *string meth_td_definition(hash request) {
         # validate request
-        if (!request.hasKey("params"))
+        if (!request.hasKey("params")) {
             return ErrorResponse::invalidRequest(request, "required attribute 'params' is missing");
-
-        *string validation = ParamValidator::textDocumentPositionParams(request);
-        if (validation)
+        }
+        *string validation = ParamValidator::textDocumentPositionParams(request, request.params);
+        if (validation) {
             return validation;
+        }
 
         if (ignoredUris{request.params.textDocument.uri}) {
             log(2, sprintf("'textDocument/definition' request for ignored URI '%s'",
@@ -1000,8 +1035,9 @@ class QLS {
 
         # find requested symbol in the document
         *hash symbolInfo = doc.findSymbolInfo(request.params.position);
-        if (!symbolInfo)
+        if (!symbolInfo) {
             return make_jsonrpc_response(jsonRpcVer, request.id, list());
+        }
 
         # prepare search query
         string query = symbolInfo.name;
@@ -1029,35 +1065,5 @@ class QLS {
         # prepare results
         list result = map $1.location, symbols;
         return make_jsonrpc_response(jsonRpcVer, request.id, result);
-    }
-
-    #! "textDocument/codeAction" method handler
-    private:internal *string meth_td_codeAction(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "textDocument/codeLens" method handler
-    private:internal *string meth_td_codeLens(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "codeLens/resolve" method handler
-    private:internal *string meth_codeLens_resolve(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "textDocument/documentLink" method handler
-    private:internal *string meth_td_documentLink(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "documentLink/resolve" method handler
-    private:internal *string meth_documentLink_resolve(hash request) {
-        return ErrorResponse::methodNotFound(request);
-    }
-
-    #! "textDocument/rename" method handler
-    private:internal *string meth_td_rename(hash request) {
-        return ErrorResponse::methodNotFound(request);
     }
 }
