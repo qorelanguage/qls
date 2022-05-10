@@ -1,7 +1,7 @@
 #!/usr/bin/env qore
 # -*- mode: qore; indent-tabs-mode: nil -*-
 
-/*  qls.q Copyright 2017 Qore Technologies, s.r.o.
+/*  qls.q Copyright 2017 - 2022 Qore Technologies, s.r.o.
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -31,7 +31,7 @@
 %new-style
 %strict-args
 
-%requires qore >= 0.8.12
+%requires qore >= 0.9.14
 
 %requires json
 %requires Mime
@@ -158,8 +158,7 @@ class QLS {
             if (!d.chdir(dirname(logFilePath))) {
                 try {
                     d.create(0755);
-                }
-                catch (e) {
+                } catch (hash<ExceptionInfo> ex) {
                     canOpenLog = False;
                     return;
                 }
@@ -170,8 +169,7 @@ class QLS {
                 FileOutputStream fos(logFile, appendToLog);
                 fos.close();
                 canOpenLog = True;
-            }
-            catch (e) {
+            } catch (hash<ExceptionInfo> ex) {
                 canOpenLog = False;
             }
         }
@@ -442,8 +440,7 @@ class QLS {
         list qoreFiles;
         try {
             qoreFiles = Files::find_qore_files(rootPath);
-        }
-        catch (hash ex) {
+        } catch (hash<ExceptionInfo> ex) {
             if (ex.err == "DIR-READ-FAILURE") {
                 log(0, "WARNING: root path scanning failed - %s: %s\n", ex.err, ex.desc);
                 push messagesToSend, Notification::showMessage(
@@ -486,8 +483,7 @@ class QLS {
         list moduleFiles;
         try {
             moduleFiles = Files::find_std_modules();
-        }
-        catch (hash ex) {
+        } catch (hash<ExceptionInfo> ex) {
             if (ex.err == "DIR-READ-FAILURE") {
                 log(0, "WARNING: std module scanning failed - %s: %s\n", ex.err, ex.desc);
                 push messagesToSend, Notification::showMessage(
@@ -553,14 +549,14 @@ class QLS {
         try {
             # parse all Qore files in the current workspace
             parseFilesInWorkspace();
-        } catch (hash ex) {
+        } catch (hash<ExceptionInfo> ex) {
             return ErrorResponse::invalidParams(request, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
 
         try {
             # parse standard Qore modules
             parseStdModules();
-        } catch (hash ex) {
+        } catch (hash<ExceptionInfo> ex) {
             return ErrorResponse::internalError(jsonRpcVer, sprintf("%s: %s: %N", ex.err, ex.desc, ex));
         }
 
