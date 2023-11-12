@@ -33,9 +33,7 @@ module Files {
     url     = "https://github.com/qorelanguage/qls";
 }
 
-public namespace Files
-{
-
+public namespace Files {
 public const QORE_EXTENSIONS = (
     # Qore file extensions
     "q"         : "Qore script",
@@ -64,11 +62,14 @@ public bool sub is_valid_qore_file(string path) {
     # here we are trying to simulate magic as specified in Freedesktop's
     # Shared MIME-info Database specification.
     # For Qore we just assume that "#!/usr/bin/env qore" is used
-    FileLineIterator it(path);
-    while (it.next()) {
-        if (it.getValue().regex("^#!/usr/bin/env qore"))
-            return True;
-        break;
+    try {
+        ReadOnlyFile f();
+        f.open2(path);
+        *string line = f.readLine(False);
+        return (line =~ /^#!\/usr\/bin\/env qore/)
+            || (line =~ /^#![^ ]+\/qore($| )/);
+    } catch (hash<ExceptionInfo> ex) {
+        # ignore exceptions and return False
     }
 
     return False;

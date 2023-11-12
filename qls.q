@@ -459,7 +459,6 @@ class QLS {
                     " Please check that the workspace does not contain any invalid symlinks or other invalid files or directories.");
                 return;
             }
-            rethrow;
         }
 
         # create a list of file URIs
