@@ -63,8 +63,7 @@ public bool sub is_valid_qore_file(string path) {
     # Shared MIME-info Database specification.
     # For Qore we just assume that "#!/usr/bin/env qore" is used
     try {
-        ReadOnlyFile f();
-        f.open2(path);
+        ReadOnlyFile f(path);
         *string line = f.readLine(False);
         return (line =~ /^#!\/usr\/bin\/env qore/)
             || (line =~ /^#![^ ]+\/qore($| )/);
