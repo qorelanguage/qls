@@ -35,6 +35,7 @@
 
 %requires json
 %requires Mime
+%requires Util
 
 %requires ./qlib/Document.qm
 %requires ./qlib/ErrorResponse.qm
@@ -108,9 +109,6 @@ class QLS {
         #! Whether to append to the log file.
         bool appendToLog = True;
 
-        #! Whether the log file can be opened.
-        bool canOpenLog = False;
-
         #! Logging verbosity. Only messages with this level or lower will be logged.
         int logVerbosity = 0;
 
@@ -136,6 +134,10 @@ class QLS {
         hash ignoredUris;
     }
 
+    private:internal {
+        FileOutputStream fos;
+    }
+
     constructor() {
         logFile = getDefaultLogFilePath();
         prepareLogFile(logFile);
@@ -159,39 +161,31 @@ class QLS {
                 try {
                     d.create(0755);
                 } catch (hash<ExceptionInfo> ex) {
-                    canOpenLog = False;
                     return;
                 }
             }
 
             # check if the log file can be opened and truncate it if appending is turned off
             try {
-                FileOutputStream fos(logFile, appendToLog);
-                fos.close();
-                canOpenLog = True;
+                fos = new FileOutputStream(logFile, appendToLog);
             } catch (hash<ExceptionInfo> ex) {
-                canOpenLog = False;
             }
         }
     }
 
     private:internal log(int verbosity, string fmt) {
-        if (logging && canOpenLog && verbosity <= logVerbosity) {
+        if (fos && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", argv);
-            FileOutputStream fos(logFile, True);
             fos.write(binary(msg));
-            fos.close();
         }
     }
 
     private:internal log(int verbosity, string fmt, softlist l) {
-        if (logging && canOpenLog && verbosity <= logVerbosity) {
+        if (fos && verbosity <= logVerbosity) {
             string str = sprintf("%s: ", format_date("YYYY-MM-DD HH:mm:SS", now()));
             string msg = vsprintf(str + fmt + "\n", l);
-            FileOutputStream fos(logFile, True);
             fos.write(binary(msg));
-            fos.close();
         }
     }
 
@@ -368,12 +362,12 @@ class QLS {
             } else if (!received.msg) {
                 responses = (ErrorResponse::internalError(jsonRpcVer, "no message received"),);
             } else {
-                #log(0, "recv: %N\n", received.msg);
+                #log(0, "recv: %N", received.msg);
                 responses = handleRequest(received.msg);
             }
 
             # send back response if any
-            #log(0, "resp: %N\n", response);
+            #log(0, "resp: %N", response);
             if (responses) {
                 map Messenger::send($1), responses, $1.typeCode() == NT_STRING;
             }
@@ -398,7 +392,8 @@ class QLS {
 
         # validate request
         if (request.typeCode() != NT_HASH) {
-            return ErrorResponse::invalidRequest({"received": msg, "jsonrpc": jsonRpcVer}, "Invalid JSON-RPC request");
+            return ErrorResponse::invalidRequest({"received": msg, "jsonrpc": jsonRpcVer},
+                "Invalid JSON-RPC request");
         }
 
         *string validation = validateRequest(request);
@@ -432,7 +427,7 @@ class QLS {
 
     private:internal parseFilesInWorkspace() {
         if (!rootPath) {
-            log(0, "WARNING: root path not set - workspace files will not be parsed\n");
+            log(0, "WARNING: root path not set - workspace files will not be parsed");
             return;
         }
 
@@ -442,21 +437,24 @@ class QLS {
             qoreFiles = Files::find_qore_files(rootPath);
         } catch (hash<ExceptionInfo> ex) {
             if (ex.err == "DIR-READ-FAILURE") {
-                log(0, "WARNING: root path scanning failed - %s: %s\n", ex.err, ex.desc);
+                log(0, "WARNING: root path scanning failed: %s", get_exception_string(ex));
                 push messagesToSend, Notification::showMessage(
                     jsonRpcVer,
                     MessageType.Warning,
-                    "An error happened during reading of workspace root, therefore Qore IntelliSense features might not work fully."
-                    " Please check that the workspace does not contain any invalid symlinks or other invalid files or directories.");
+                    "An error happened during reading of workspace root, therefore Qore IntelliSense features might "
+                        "not work fully. "
+                        "Please check that the workspace does not contain any invalid symlinks or other invalid "
+                        "files or directories.");
                 return;
             }
             if (ex.err == "WORKSPACE-PATH-ERROR") {
-                log(0, "WARNING: could not open root path - %s: %s\n", ex.err, ex.desc);
+                log(0, "WARNING: error processing root path: %s", get_exception_string(ex));
                 push messagesToSend, Notification::showMessage(
                     jsonRpcVer,
                     MessageType.Warning,
-                    "Could not open workspace root. Some Qore IntelliSense features might not work fully."
-                    " Please check that the workspace does not contain any invalid symlinks or other invalid files or directories.");
+                    "Could not open workspace root. Some Qore IntelliSense features might not work fully. "
+                        "Please check that the workspace does not contain any invalid symlinks or other invalid "
+                        "files or directories.");
                 return;
             }
         }
@@ -464,7 +462,7 @@ class QLS {
         # create a list of file URIs
         int rootPathSize = rootPath.size();
         qoreFiles = map rootUri + $1.substr(rootPathSize), qoreFiles;
-        log(1, "qore files in workspace: %N\n", qoreFiles);
+        log(1, "qore files in workspace: %N", qoreFiles);
 
         # measure start time
         date start = now_us();
@@ -474,7 +472,7 @@ class QLS {
 
         # measure end time
         date end = now_us();
-        log(0, "parsing of %d workspace files took: %y\n", qoreFiles.size(), end-start);
+        log(0, "parsing of %d workspace files took: %y", qoreFiles.size(), end-start);
     }
 
     private:internal parseStdModules() {
@@ -484,7 +482,7 @@ class QLS {
             moduleFiles = Files::find_std_modules();
         } catch (hash<ExceptionInfo> ex) {
             if (ex.err == "DIR-READ-FAILURE") {
-                log(0, "WARNING: std module scanning failed - %s: %s\n", ex.err, ex.desc);
+                log(0, "WARNING: std module scanning failed - %s: %s", ex.err, ex.desc);
                 push messagesToSend, Notification::showMessage(
                     jsonRpcVer,
                     MessageType.Warning,
@@ -633,7 +631,7 @@ class QLS {
         }
         prepareLogFile(logFile);
 
-        if (logging && !canOpenLog)
+        if (logging && !fos)
             return Notification::showMessage(jsonRpcVer, MessageType.Warning,
                 "QLS log file could not be opened. Logging will be turned off.");
         return NOTHING;

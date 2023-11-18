@@ -27,7 +27,7 @@
 %strict-args
 
 module Files {
-    version = "0.1";
+    version = "0.3";
     desc    = "Files";
     author  = "Ondrej Musil <ondrej.musil@qoretechnologies.com>";
     url     = "https://github.com/qorelanguage/qls";
@@ -48,16 +48,20 @@ public const QORE_EXTENSIONS = (
     "qfd"       : "Qorus functions",
     "qjob"      : "Qorus job",
     "qconst"    : "Qorus constant",
-    #"qmapper"  : "Qorus mapper",
     "qscript"   : "Qorus deployment script",
     "qsm"       : "Qorus schema module",
-    #"qvmap"    : "Qorus value map"
 );
 
 public bool sub is_valid_qore_file(string path) {
+    *hash<StatInfo> info = hstat(path);
+    if (!info) {
+        # return False if we can't stat() the file
+        return False;
+    }
     *string ext = (path =~ x/\.([a-z0-9]+)$/i)[0];
-    if (ext && QORE_EXTENSIONS.hasKey(ext))
+    if (ext && QORE_EXTENSIONS{ext}) {
         return True;
+    }
 
     # here we are trying to simulate magic as specified in Freedesktop's
     # Shared MIME-info Database specification.
@@ -80,21 +84,30 @@ public bool sub is_valid_qore_file(string path) {
 */
 public list sub find_qore_files(string path) {
     Dir d();
-    if (!d.chdir(path))
-        throw "WORKSPACE-PATH-ERROR", sprintf("Cannot open directory: %s", path);
+    if (!d.chdir(path)) {
+        throw "WORKSPACE-PATH-ERROR", sprintf("%s: cannot open directory: %s", path, strerror());
+    }
 
-    list ret = list();
+    list ret = ();
 
     ListIterator it = d.listFiles().iterator();
     while (it.next()) {
         string fpath = sprintf("%s%s%s", path, DirSep, it.getValue());
-        if (is_valid_qore_file(fpath))
+        if (is_valid_qore_file(fpath)) {
             push ret, fpath;
+        }
     }
 
     it = d.listDirs().iterator();
     while (it.next()) {
-        ret += find_qore_files(path + DirSep + it.getValue());
+        string targ = path + DirSep + it.getValue();
+        if (hstat(targ).type == "DIRECTORY") {
+            try {
+                ret += find_qore_files(targ);
+            } catch (hash<ExceptionInfo> ex) {
+                # ignore errors and continue
+            }
+        }
     }
 
     return ret;

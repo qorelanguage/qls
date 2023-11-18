@@ -52,14 +52,13 @@ public class Messenger {
             # read headers
             if (txt.equalPartial("Content-Length")) { # format: "Content-Length: %d"
                 contentLength = txt.substr(16).toInt();
-            }
-            else if (txt.equalPartial("Content-Type")){  # format: "Content-Type: %s"
+            } else if (txt.equalPartial("Content-Type")){  # format: "Content-Type: %s"
                 contentType = trim(txt);
-            }
-            # read JSON-RPC message
-            else if (txt == "") {
-                if (contentLength == -1)
+            } else if (txt == "") {
+                # read JSON-RPC message
+                if (contentLength == -1) {
                     return {"error": "Content-Length header is missing"};
+                }
                 txt = stdin.readBinary(contentLength).toString("UTF-8");
                 #debugLog("read JSON message (%d bytes): '%s'", txt.size(), txt);
                 return {"Content-Type": contentType, "msg": txt};
