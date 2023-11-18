@@ -48,7 +48,6 @@ public const QORE_EXTENSIONS = (
     "qfd"       : "Qorus functions",
     "qjob"      : "Qorus job",
     "qconst"    : "Qorus constant",
-    "qscript"   : "Qorus deployment script",
     "qsm"       : "Qorus schema module",
 );
 
